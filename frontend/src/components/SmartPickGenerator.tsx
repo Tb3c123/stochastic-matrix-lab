@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { API_BASE_URL } from "@/config/api";
 import { Sparkles, Dna, Play, Trash2, RotateCcw, AlertCircle, CheckCircle2, BookmarkCheck, Plus, Minus, Trophy } from "lucide-react";
 
 interface SmartPickProps {
@@ -179,7 +180,7 @@ export const SmartPickGenerator: React.FC<SmartPickProps> = ({ gameCode, onRunBa
   const handleRandomFillSingle = async (rowIndex: number) => {
     setLoading(true);
     try {
-      const res = await fetch("http://localhost:8000/api/v1/generator/smart-pick", {
+      const res = await fetch(`${API_BASE_URL}/api/v1/generator/smart-pick`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -217,7 +218,7 @@ export const SmartPickGenerator: React.FC<SmartPickProps> = ({ gameCode, onRunBa
   const handleGenerateAll = async () => {
     setLoading(true);
     try {
-      const res = await fetch("http://localhost:8000/api/v1/generator/smart-pick", {
+      const res = await fetch(`${API_BASE_URL}/api/v1/generator/smart-pick`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -277,7 +278,7 @@ export const SmartPickGenerator: React.FC<SmartPickProps> = ({ gameCode, onRunBa
 
     setSaving(true);
     try {
-      const res = await fetch("http://localhost:8000/api/v1/tickets/save", {
+      const res = await fetch(`${API_BASE_URL}/api/v1/tickets/save`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

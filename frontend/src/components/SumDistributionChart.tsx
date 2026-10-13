@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
+import { API_BASE_URL } from "@/config/api";
 import {
   ResponsiveContainer,
   AreaChart,
@@ -26,7 +27,7 @@ export const SumDistributionChart: React.FC<SumDistributionProps> = ({ gameCode 
     const fetchDistribution = async () => {
       setLoading(true);
       try {
-        const res = await fetch(`http://localhost:8000/api/v1/analytics/distribution?game_code=${gameCode}&window_size=100`);
+        const res = await fetch(`${API_BASE_URL}/api/v1/analytics/distribution?game_code=${gameCode}&window_size=100`);
         const json = await res.json();
         if (json.success && json.data) {
           setDistData(json.data);

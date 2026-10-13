@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
+import { API_BASE_URL } from "@/config/api";
 import {
   Brain,
   Sparkles,
@@ -33,7 +34,7 @@ export const HybridLearningDashboard: React.FC<HybridLearningProps> = ({
   const fetchStatus = async () => {
     setLoading(true);
     try {
-      const res = await fetch(`http://localhost:8000/api/v1/auto-cycle/status?game_code=${gameCode}`);
+      const res = await fetch(`${API_BASE_URL}/api/v1/auto-cycle/status?game_code=${gameCode}`);
       const json = await res.json();
       if (json.success && json.data) {
         setStatusData(json.data);
@@ -48,7 +49,7 @@ export const HybridLearningDashboard: React.FC<HybridLearningProps> = ({
   const handleRunNow = async () => {
     setRunningCycle(true);
     try {
-      const res = await fetch(`http://localhost:8000/api/v1/auto-cycle/run-now?game_code=${gameCode}`, {
+      const res = await fetch(`${API_BASE_URL}/api/v1/auto-cycle/run-now?game_code=${gameCode}`, {
         method: "POST"
       });
       const json = await res.json();

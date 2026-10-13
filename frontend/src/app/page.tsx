@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
+import { API_BASE_URL } from "@/config/api";
 import { Header } from "@/components/Header";
 import { LatestDrawBanner } from "@/components/LatestDrawBanner";
 import { NextDrawCountdown } from "@/components/NextDrawCountdown";
@@ -27,14 +28,14 @@ export default function HomePage() {
     setLoading(true);
     try {
       // 1. Fetch latest draw
-      const drawRes = await fetch(`http://localhost:8000/api/v1/draws/latest?game_code=${gameCode}`);
+      const drawRes = await fetch(`${API_BASE_URL}/api/v1/draws/latest?game_code=${gameCode}`);
       const drawJson = await drawRes.json();
       if (drawJson.success) {
         setLatestDraw(drawJson.data);
       }
 
       // 2. Fetch hot/cold analytics
-      const hcRes = await fetch(`http://localhost:8000/api/v1/analytics/hot-cold?game_code=${gameCode}&window_size=100`);
+      const hcRes = await fetch(`${API_BASE_URL}/api/v1/analytics/hot-cold?game_code=${gameCode}&window_size=100`);
       const hcJson = await hcRes.json();
       if (hcJson.success) {
         setHotColdData(hcJson.data);

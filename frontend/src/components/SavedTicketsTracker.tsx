@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
+import { API_BASE_URL } from "@/config/api";
 import {
   BookmarkCheck,
   Clock,
@@ -37,14 +38,14 @@ export const SavedTicketsTracker: React.FC<SavedTicketsTrackerProps> = ({ gameCo
     setLoading(true);
     try {
       // 1. Fetch tickets
-      const res = await fetch(`http://localhost:8000/api/v1/tickets?game_code=${gameCode}`);
+      const res = await fetch(`${API_BASE_URL}/api/v1/tickets?game_code=${gameCode}`);
       const data = await res.json();
       if (data.success && data.data) {
         setTickets(data.data);
       }
 
       // 2. Fetch algorithm performance evaluation
-      const perfRes = await fetch(`http://localhost:8000/api/v1/tickets/algorithms-performance?game_code=${gameCode}`);
+      const perfRes = await fetch(`${API_BASE_URL}/api/v1/tickets/algorithms-performance?game_code=${gameCode}`);
       const perfData = await perfRes.json();
       if (perfData.success && perfData.data) {
         setAlgoPerf(perfData.data);
@@ -59,7 +60,7 @@ export const SavedTicketsTracker: React.FC<SavedTicketsTrackerProps> = ({ gameCo
   const handleEvaluate = async () => {
     setEvaluating(true);
     try {
-      const res = await fetch("http://localhost:8000/api/v1/tickets/evaluate", {
+      const res = await fetch(`${API_BASE_URL}/api/v1/tickets/evaluate`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ game_code: gameCode })

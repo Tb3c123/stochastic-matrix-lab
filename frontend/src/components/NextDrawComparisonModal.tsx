@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
+import { API_BASE_URL } from "@/config/api";
 import { X, Target, Clock, ShieldAlert, CheckCircle2, BookmarkCheck, Sparkles, Trophy } from "lucide-react";
 
 interface NextDrawComparisonModalProps {
@@ -25,7 +26,7 @@ export const NextDrawComparisonModal: React.FC<NextDrawComparisonModalProps> = (
     const fetchUpcoming = async () => {
       setLoading(true);
       try {
-        const res = await fetch(`http://localhost:8000/api/v1/tickets/upcoming?game_code=${gameCode}`);
+        const res = await fetch(`${API_BASE_URL}/api/v1/tickets/upcoming?game_code=${gameCode}`);
         const json = await res.json();
         if (json.success && json.data) {
           setUpcomingInfo(json.data);
@@ -43,7 +44,7 @@ export const NextDrawComparisonModal: React.FC<NextDrawComparisonModalProps> = (
   const handleSaveThisTicket = async () => {
     setSaving(true);
     try {
-      const res = await fetch("http://localhost:8000/api/v1/tickets/save", {
+      const res = await fetch(`${API_BASE_URL}/api/v1/tickets/save`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

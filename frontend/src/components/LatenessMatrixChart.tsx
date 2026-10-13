@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
+import { API_BASE_URL } from "@/config/api";
 import {
   ResponsiveContainer,
   BarChart,
@@ -25,7 +26,7 @@ export const LatenessMatrixChart: React.FC<LatenessMatrixProps> = ({ gameCode })
     const fetchLateness = async () => {
       setLoading(true);
       try {
-        const res = await fetch(`http://localhost:8000/api/v1/analytics/lateness?game_code=${gameCode}`);
+        const res = await fetch(`${API_BASE_URL}/api/v1/analytics/lateness?game_code=${gameCode}`);
         const json = await res.json();
         if (json.success && json.data?.lateness_matrix) {
           // Sort by current lateness descending, take top 16 numbers
