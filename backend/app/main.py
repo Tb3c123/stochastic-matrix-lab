@@ -1,3 +1,4 @@
+import asyncio
 from contextlib import asynccontextmanager
 from datetime import datetime
 from fastapi import FastAPI
@@ -6,13 +7,21 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.config import settings
 from app.database import init_db
 from app.schemas.common import ResponseEnvelope
-from app.routers import games, draws, analytics, generator
+from app.routers import games, draws, analytics, generator, tickets, auto_cycle
+from app.services.scheduler import auto_cycle_worker
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Initialize DB & seed default games on startup
     await init_db()
+    # Start automated 10:00 AM daily continuous learning scheduler
+    worker_task = asyncio.create_task(auto_cycle_worker())
     yield
+    worker_task.cancel()
+    try:
+        await worker_task
+    except asyncio.CancelledError:
+        pass
 
 app = FastAPI(
     title=settings.PROJECT_NAME,
@@ -52,3 +61,5 @@ app.include_router(games.router, prefix=settings.API_V1_STR)
 app.include_router(draws.router, prefix=settings.API_V1_STR)
 app.include_router(analytics.router, prefix=settings.API_V1_STR)
 app.include_router(generator.router, prefix=settings.API_V1_STR)
+app.include_router(tickets.router, prefix=settings.API_V1_STR)
+app.include_router(auto_cycle.router, prefix=settings.API_V1_STR)

@@ -68,11 +68,27 @@ def generate_smart_picks(
         odd_c = sum(1 for n in chosen if n % 2 != 0)
         even_c = pick_count - odd_c
 
-        tickets.append({
+        # Generate intelligent special number for Power 6/55
+        special_num = None
+        if max_number == 55:
+            # Pick from remaining numbers not in main 6 numbers
+            remaining_pool = [n for n in range(1, 56) if n not in chosen]
+            # Prioritize overdue or balanced candidate for special number
+            if overdue_numbers:
+                overdue_cand = [n for n in overdue_numbers if n in remaining_pool]
+                special_num = random.choice(overdue_cand) if overdue_cand else random.choice(remaining_pool)
+            else:
+                special_num = random.choice(remaining_pool)
+
+        ticket_item: Dict[str, Any] = {
             "numbers": chosen,
             "sum_value": sum(chosen),
             "odd_even_ratio": f"{odd_c}:{even_c}"
-        })
+        }
+        if special_num is not None:
+            ticket_item["special_number"] = special_num
+
+        tickets.append(ticket_item)
 
     return {
         "strategy_used": strategy,
