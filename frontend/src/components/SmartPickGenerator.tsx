@@ -28,7 +28,7 @@ export const SmartPickGenerator: React.FC<SmartPickProps> = ({ gameCode, onRunBa
   const maxNumber = isPower ? 55 : 45;
   // 1. Số dãy trên vé: Tự điền số lượng vào, mặc định là 5
   const [rowCount, setRowCount] = useState<number>(5);
-  const [strategy, setStrategy] = useState<"balanced" | "mean_reversion" | "pure_random">("balanced");
+  const [strategy, setStrategy] = useState<"balanced" | "mean_reversion" | "pure_random" | "custom_manual">("custom_manual");
   const [loading, setLoading] = useState<boolean>(false);
   const [saving, setSaving] = useState<boolean>(false);
   const [saveSuccessMsg, setSaveSuccessMsg] = useState<string | null>(null);
@@ -40,7 +40,7 @@ export const SmartPickGenerator: React.FC<SmartPickProps> = ({ gameCode, onRunBa
       numbers: [],
       specialInput: "",
       specialNumber: null,
-      strategy: "balanced"
+      strategy: "custom_manual"
     }));
   });
 
@@ -93,6 +93,7 @@ export const SmartPickGenerator: React.FC<SmartPickProps> = ({ gameCode, onRunBa
 
       targetRow.inputs = newInputs;
       targetRow.numbers = parsedNums;
+      targetRow.strategy = "custom_manual";
       targetRow.error = err;
       next[rowIndex] = targetRow;
       return next;
@@ -238,13 +239,14 @@ export const SmartPickGenerator: React.FC<SmartPickProps> = ({ gameCode, onRunBa
 
   const handleGenerateAll = async () => {
     setLoading(true);
+    const fetchStrat = strategy === "custom_manual" ? "balanced" : strategy;
     try {
       const res = await fetch(`${API_BASE_URL}/api/v1/generator/smart-pick`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           game_code: gameCode,
-          strategy: strategy,
+          strategy: fetchStrat,
           tickets_count: rowCount
         })
       });
@@ -263,7 +265,7 @@ export const SmartPickGenerator: React.FC<SmartPickProps> = ({ gameCode, onRunBa
                 numbers: nums,
                 specialInput: spNum ? (spNum < 10 ? `0${spNum}` : `${spNum}`) : "",
                 specialNumber: spNum,
-                strategy: strategy,
+                strategy: fetchStrat,
                 error: undefined
               };
             }
@@ -297,6 +299,10 @@ export const SmartPickGenerator: React.FC<SmartPickProps> = ({ gameCode, onRunBa
     const validRowStrategies = validRowsData.map((d) => d.strategy);
     const validSpecialNumbers = validRowsData.map((d) => d.special_number);
 
+    // Determine effective ticket strategy: if strategy is custom_manual or any row is custom_manual
+    const isAnyCustom = validRowStrategies.some((s) => s === "custom_manual");
+    const effectiveStrategy = strategy === "custom_manual" || isAnyCustom ? "custom_manual" : strategy;
+
     setSaving(true);
     try {
       const res = await fetch(`${API_BASE_URL}/api/v1/tickets/save`, {
@@ -304,7 +310,7 @@ export const SmartPickGenerator: React.FC<SmartPickProps> = ({ gameCode, onRunBa
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           game_code: gameCode,
-          strategy: strategy,
+          strategy: effectiveStrategy,
           rows: validRows,
           row_strategies: validRowStrategies,
           special_numbers: validSpecialNumbers
@@ -407,15 +413,31 @@ export const SmartPickGenerator: React.FC<SmartPickProps> = ({ gameCode, onRunBa
           <div className="flex flex-col sm:flex-row sm:items-center gap-2">
             <select
               value={strategy}
-              onChange={(e) => setStrategy(e.target.value as any)}
+              onChange={(e) => {
+                const newStrat = e.target.value as any;
+                setStrategy(newStrat);
+                setRows((prev) => prev.map((r) => ({ ...r, strategy: newStrat })));
+              }}
               className="bg-slate-800 border border-slate-700 text-slate-200 text-xs md:text-sm rounded-xl px-3 py-2 font-semibold focus:outline-none focus:ring-2 focus:ring-amber-500 cursor-pointer"
             >
-              <option value="balanced">Thuật toán: Cân bằng (Balanced)</option>
-              <option value="mean_reversion">Thuật toán: Hồi quy (Mean Reversion)</option>
-              <option value="pure_random">Thuật toán: Ngẫu nhiên (Pure Random)</option>
+              <option value="custom_manual">✍️ Tự Chọn Thủ Công (Custom Pick)</option>
+              <option value="balanced">⚡ Thuật toán: Cân Bằng (Balanced)</option>
+              <option value="mean_reversion">📈 Thuật toán: Hồi Quy (Mean Reversion)</option>
+              <option value="pure_random">🎲 Thuật toán: Ngẫu Nhiên (Pure Random)</option>
             </select>
             <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-bold bg-slate-800/80 border border-slate-700/80 text-amber-400">
-              <span>Độ chính xác: <b>{strategy === "balanced" ? "82.5% (A+)" : strategy === "mean_reversion" ? "76.0% (A)" : "52.0% (B)"}</b></span>
+              <span>
+                Độ chính xác:{" "}
+                <b>
+                  {strategy === "custom_manual"
+                    ? "58.0% (B+)"
+                    : strategy === "balanced"
+                    ? "82.5% (A+)"
+                    : strategy === "mean_reversion"
+                    ? "76.0% (A)"
+                    : "52.0% (B)"}
+                </b>
+              </span>
             </div>
           </div>
 

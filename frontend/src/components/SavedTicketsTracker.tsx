@@ -136,10 +136,33 @@ export const SavedTicketsTracker: React.FC<SavedTicketsTrackerProps> = ({ gameCo
     }
   };
 
-  const filteredTickets = tickets.filter((t) => {
-    if (selectedAlgoFilter === "all") return true;
-    return t.strategy === selectedAlgoFilter;
-  });
+  const isTicketMatchingAlgo = (t: any, algo: string) => {
+    if (algo === "all") return true;
+    if (algo === "custom_manual") {
+      if (t.strategy === "custom_manual" || t.strategy === "custom") return true;
+      const rowForecasts = t.predicted_analysis?.row_forecasts || [];
+      return rowForecasts.some(
+        (rf: any) => rf.algorithm_code === "custom_manual" || rf.algorithm_code === "custom"
+      );
+    }
+    if (algo === "hybrid_ai_learned") {
+      if (t.strategy === "hybrid_ai_learned") return true;
+      const rowForecasts = t.predicted_analysis?.row_forecasts || [];
+      return rowForecasts.some((rf: any) => rf.algorithm_code?.startsWith("hybrid_"));
+    }
+    if (t.strategy === algo) return true;
+    const rowForecasts = t.predicted_analysis?.row_forecasts || [];
+    return rowForecasts.some((rf: any) => rf.algorithm_code === algo);
+  };
+
+  const countAll = tickets.length;
+  const countHybrid = tickets.filter((t) => isTicketMatchingAlgo(t, "hybrid_ai_learned")).length;
+  const countBalanced = tickets.filter((t) => isTicketMatchingAlgo(t, "balanced")).length;
+  const countMean = tickets.filter((t) => isTicketMatchingAlgo(t, "mean_reversion")).length;
+  const countRandom = tickets.filter((t) => isTicketMatchingAlgo(t, "pure_random")).length;
+  const countCustom = tickets.filter((t) => isTicketMatchingAlgo(t, "custom_manual")).length;
+
+  const filteredTickets = tickets.filter((t) => isTicketMatchingAlgo(t, selectedAlgoFilter));
 
   return (
     <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 md:p-8 shadow-2xl space-y-8">
@@ -246,7 +269,17 @@ export const SavedTicketsTracker: React.FC<SavedTicketsTrackerProps> = ({ gameCo
               : "bg-slate-800/80 text-slate-400 hover:text-white border border-slate-700"
           }`}
         >
-          Tất Cả ({tickets.length})
+          Tất Cả ({countAll})
+        </button>
+        <button
+          onClick={() => setSelectedAlgoFilter("hybrid_ai_learned")}
+          className={`px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+            selectedAlgoFilter === "hybrid_ai_learned"
+              ? "bg-indigo-500 text-white shadow-md"
+              : "bg-slate-800/80 text-slate-400 hover:text-white border border-slate-700"
+          }`}
+        >
+          AI Hybrid ({countHybrid})
         </button>
         <button
           onClick={() => setSelectedAlgoFilter("balanced")}
@@ -256,7 +289,7 @@ export const SavedTicketsTracker: React.FC<SavedTicketsTrackerProps> = ({ gameCo
               : "bg-slate-800/80 text-slate-400 hover:text-white border border-slate-700"
           }`}
         >
-          Cân Bằng
+          Cân Bằng ({countBalanced})
         </button>
         <button
           onClick={() => setSelectedAlgoFilter("mean_reversion")}
@@ -266,7 +299,7 @@ export const SavedTicketsTracker: React.FC<SavedTicketsTrackerProps> = ({ gameCo
               : "bg-slate-800/80 text-slate-400 hover:text-white border border-slate-700"
           }`}
         >
-          Hồi Quy
+          Hồi Quy ({countMean})
         </button>
         <button
           onClick={() => setSelectedAlgoFilter("pure_random")}
@@ -276,17 +309,17 @@ export const SavedTicketsTracker: React.FC<SavedTicketsTrackerProps> = ({ gameCo
               : "bg-slate-800/80 text-slate-400 hover:text-white border border-slate-700"
           }`}
         >
-          Ngẫu Nhiên
+          Ngẫu Nhiên ({countRandom})
         </button>
         <button
           onClick={() => setSelectedAlgoFilter("custom_manual")}
           className={`px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
             selectedAlgoFilter === "custom_manual"
-              ? "bg-purple-500 text-slate-950 shadow-md"
+              ? "bg-purple-500 text-white shadow-md"
               : "bg-slate-800/80 text-slate-400 hover:text-white border border-slate-700"
           }`}
         >
-          Tự Chọn
+          Tự Chọn ({countCustom})
         </button>
       </div>
 

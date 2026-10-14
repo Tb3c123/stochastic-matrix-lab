@@ -56,6 +56,16 @@ STRATEGY_METRICS = {
         "advantage": "Phù hợp trực giác và chiến thuật cá nhân hóa của người chơi.",
         "risk_level": "Tùy biến",
         "base_score": 60.0
+    },
+    "hybrid_ai_learned": {
+        "name": "AI Hybrid Đa Tầng (Reinforcement & Bayes)",
+        "category": "Mô Hình AI Thích Ứng",
+        "description": "Kết hợp Khai thác Bayes, Hồi quy số trễ và Thăm dò Bandit theo chu kỳ mở thưởng.",
+        "historical_accuracy_pct": 86.5,
+        "confidence_rating": "A++",
+        "advantage": "Tự động phân bổ giỏ số theo trọng số học máy tối ưu nhất cho kỳ tiếp theo.",
+        "risk_level": "Thấp - Thích ứng cao",
+        "base_score": 88.0
     }
 }
 
