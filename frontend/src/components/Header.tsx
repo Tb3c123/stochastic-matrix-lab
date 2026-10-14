@@ -74,6 +74,16 @@ export const Header: React.FC<HeaderProps> = ({
           >
             🤖 AI Tự Học (Hybrid)
           </button>
+          <button
+            onClick={() => onSelectTab("winning_history")}
+            className={`px-3.5 py-1.5 rounded-xl transition-all cursor-pointer flex items-center gap-1.5 ${
+              activeTab === "winning_history"
+                ? "bg-gradient-to-r from-amber-500 to-yellow-400 text-slate-950 font-black shadow-md shadow-amber-500/30"
+                : "text-amber-400/90 hover:text-amber-300 hover:bg-slate-800/50"
+            }`}
+          >
+            🏆 Lịch Sử Trúng
+          </button>
         </nav>
 
         {/* Game Switcher Tabs */}

@@ -91,3 +91,23 @@ async def test_save_mixed_ticket():
         assert data["predicted_analysis"]["row_forecasts"][0]["algorithm_code"] == "custom_manual"
         assert data["predicted_analysis"]["row_forecasts"][1]["algorithm_code"] == "balanced"
 
+@pytest.mark.asyncio
+async def test_winning_history_endpoint():
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        res = await client.get("/api/v1/tickets/winning-history")
+        assert res.status_code == 200
+        json_data = res.json()
+        assert json_data["success"] is True
+        data = json_data["data"]
+        assert "summary" in data
+        assert "winning_tickets" in data
+        assert isinstance(data["winning_tickets"], list)
+        summary = data["summary"]
+        assert "total_evaluated_tickets" in summary
+        assert "total_winning_tickets" in summary
+        assert "total_prize_vnd" in summary
+        assert "win_rate_pct" in summary
+        assert "tier_counts" in summary
+
+

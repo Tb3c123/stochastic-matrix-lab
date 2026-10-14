@@ -11,13 +11,14 @@ import { SumDistributionChart } from "@/components/SumDistributionChart";
 import { SmartPickGenerator } from "@/components/SmartPickGenerator";
 import { HybridLearningDashboard } from "@/components/HybridLearningDashboard";
 import { SavedTicketsTracker } from "@/components/SavedTicketsTracker";
+import { WinningHistoryTracker } from "@/components/WinningHistoryTracker";
 import { NextDrawComparisonModal } from "@/components/NextDrawComparisonModal";
 import { Disclaimer } from "@/components/Disclaimer";
 import { RefreshCw, BarChart2 } from "lucide-react";
 
 export default function HomePage() {
   const [selectedGame, setSelectedGame] = useState<string>("mega_6_45");
-  const [activeTab, setActiveTab] = useState<string>("analytics"); // analytics | generator | tickets | ai_learning
+  const [activeTab, setActiveTab] = useState<string>("analytics"); // analytics | generator | tickets | ai_learning | winning_history
   const [latestDraw, setLatestDraw] = useState<any>(null);
   const [hotColdData, setHotColdData] = useState<any>(null);
   const [loading, setLoading] = useState<boolean>(true);
@@ -102,6 +103,16 @@ export default function HomePage() {
         >
           🤖 AI Tự Học
         </button>
+        <button
+          onClick={() => setActiveTab("winning_history")}
+          className={`px-3 py-1.5 rounded-xl whitespace-nowrap transition-all flex items-center gap-1 ${
+            activeTab === "winning_history"
+              ? "bg-amber-500 text-slate-950 font-black shadow-md"
+              : "text-amber-400/90 hover:text-white bg-slate-800"
+          }`}
+        >
+          🏆 Lịch Sử Trúng
+        </button>
       </div>
 
       <main className="flex-1 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 w-full space-y-8">
@@ -181,6 +192,17 @@ export default function HomePage() {
             <HybridLearningDashboard
               gameCode={selectedGame}
               onTicketGenerated={() => setTicketsRefreshTrigger((prev) => prev + 1)}
+            />
+          </section>
+        )}
+
+        {/* TAB 5: Lịch Sử Vé Trúng Thưởng */}
+        {activeTab === "winning_history" && (
+          <section className="space-y-8 animate-in fade-in duration-300">
+            <WinningHistoryTracker
+              gameCode={selectedGame}
+              onNavigateToGenerator={() => setActiveTab("generator")}
+              onNavigateToTickets={() => setActiveTab("tickets")}
             />
           </section>
         )}

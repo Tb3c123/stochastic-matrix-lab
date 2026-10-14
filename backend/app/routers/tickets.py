@@ -448,6 +448,132 @@ async def algorithms_performance(
 
     return ResponseEnvelope(success=True, data=list(performance.values()))
 
+@router.get("/winning-history", response_model=ResponseEnvelope)
+async def get_winning_history(
+    game_code: Optional[str] = Query(None),
+    strategy: Optional[str] = Query(None),
+    prize_tier: Optional[str] = Query(None),
+    db: AsyncSession = Depends(get_db_session)
+):
+    """Retrieve all winning tickets, prize statistics, and tier distribution."""
+    query = select(SavedTicket).where(SavedTicket.status == "evaluated").order_by(SavedTicket.id.desc())
+    if game_code:
+        query = query.where(SavedTicket.game_code == game_code)
+    if strategy:
+        query = query.where(SavedTicket.strategy == strategy)
+
+    res = await db.execute(query)
+    evaluated_tickets = res.scalars().all()
+
+    total_evaluated = len(evaluated_tickets)
+    total_winning = 0
+    total_prize = 0
+    highest_prize_amount = 0
+    highest_prize_name = "Chưa có"
+
+    tier_counts = {
+        "jackpot_1": 0,
+        "jackpot_2": 0,
+        "first": 0,
+        "second": 0,
+        "third": 0
+    }
+
+    winning_tickets_data = []
+
+    for t in evaluated_tickets:
+        mr = t.matched_results or {}
+        prize = mr.get("total_prize_vnd", 0)
+        if prize <= 0:
+            continue
+
+        total_winning += 1
+        total_prize += prize
+
+        rows_eval = mr.get("rows_evaluation") or mr.get("row_evaluations") or []
+        winning_rows = []
+        for r in rows_eval:
+            r_prize = r.get("prize_amount", 0)
+            p_name = r.get("prize_name", "")
+            if r_prize > 0:
+                winning_rows.append(r)
+                if r_prize > highest_prize_amount:
+                    highest_prize_amount = r_prize
+                    highest_prize_name = f"{p_name} ({r_prize:,.0f} đ)"
+
+                if "Jackpot 1" in p_name:
+                    tier_counts["jackpot_1"] += 1
+                elif "Jackpot 2" in p_name:
+                    tier_counts["jackpot_2"] += 1
+                elif "Nhất" in p_name:
+                    tier_counts["first"] += 1
+                elif "Nhì" in p_name:
+                    tier_counts["second"] += 1
+                elif "Ba" in p_name:
+                    tier_counts["third"] += 1
+
+        if prize_tier:
+            has_tier = False
+            for wr in winning_rows:
+                wr_name = wr.get("prize_name", "").lower()
+                if prize_tier == "jackpot" and "jackpot" in wr_name:
+                    has_tier = True
+                    break
+                elif prize_tier == "first" and "nhất" in wr_name:
+                    has_tier = True
+                    break
+                elif prize_tier == "second" and "nhì" in wr_name:
+                    has_tier = True
+                    break
+                elif prize_tier == "third" and "ba" in wr_name:
+                    has_tier = True
+                    break
+            if not has_tier:
+                continue
+
+        # Strategy meta info
+        strat_meta = STRATEGY_METRICS.get(t.strategy, STRATEGY_METRICS["balanced"])
+
+        actual_win_nums = mr.get("actual_winning_numbers") or mr.get("winning_numbers") or []
+        actual_sp_num = mr.get("actual_special_number") or mr.get("special_number")
+
+        winning_tickets_data.append({
+            "id": t.id,
+            "game_code": t.game_code,
+            "strategy": t.strategy,
+            "strategy_name": strat_meta["name"],
+            "target_draw_period": t.target_draw_period,
+            "target_draw_date": t.target_draw_date,
+            "created_at": t.created_at.isoformat(),
+            "total_prize_vnd": prize,
+            "best_match_count": mr.get("best_match_count", 0),
+            "actual_winning_numbers": actual_win_nums,
+            "actual_special_number": actual_sp_num,
+            "rows_count": len(t.rows_data),
+            "winning_rows_count": len(winning_rows),
+            "winning_rows": winning_rows,
+            "all_rows_evaluation": rows_eval,
+            "learning_feedback": mr.get("learning_feedback", "")
+        })
+
+    win_rate = round((total_winning / max(1, total_evaluated)) * 100, 1)
+
+    return ResponseEnvelope(
+        success=True,
+        data={
+            "summary": {
+                "total_evaluated_tickets": total_evaluated,
+                "total_winning_tickets": total_winning,
+                "total_prize_vnd": total_prize,
+                "win_rate_pct": win_rate,
+                "highest_prize_name": highest_prize_name,
+                "highest_prize_amount": highest_prize_amount,
+                "tier_counts": tier_counts
+            },
+            "winning_tickets": winning_tickets_data
+        }
+    )
+
 @router.get("/upcoming", response_model=ResponseEnvelope)
 async def get_upcoming_draw(
     game_code: str = Query("mega_6_45"),
