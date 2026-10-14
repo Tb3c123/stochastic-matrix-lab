@@ -36,6 +36,8 @@ export const WinningHistoryTracker: React.FC<WinningHistoryTrackerProps> = ({
   const [selectedTierFilter, setSelectedTierFilter] = useState<string>("all");
   const [selectedAlgoFilter, setSelectedAlgoFilter] = useState<string>("all");
   const [expandedId, setExpandedId] = useState<number | null>(null);
+  const [simulating, setSimulating] = useState<boolean>(false);
+  const [simulateNotice, setSimulateNotice] = useState<string | null>(null);
 
   const fetchWinningHistory = async () => {
     setLoading(true);
@@ -64,6 +66,34 @@ export const WinningHistoryTracker: React.FC<WinningHistoryTrackerProps> = ({
       console.error("Fetch winning history failed:", e);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleSimulateWalkForward = async () => {
+    if (!confirm("Bắt đầu mô phỏng Walk-Forward đối soát ~20 ngày gần nhất cho cả Mega 6/45 và Power 6/55 với đầy đủ 6 thuật toán?")) {
+      return;
+    }
+    setSimulating(true);
+    setSimulateNotice(null);
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/v1/tickets/simulate-walk-forward?days_back=20`, {
+        method: "POST"
+      });
+      const json = await res.json();
+      if (json.success && json.data) {
+        const d = json.data;
+        setSimulateNotice(
+          `Đã mô phỏng thành công ${d.total_simulated_tickets} vé (${d.total_winning_tickets} vé trúng giải - ${new Intl.NumberFormat("vi-VN").format(d.total_prize_vnd)} đ) qua ${d.draws_simulated_count} kỳ quay thực tế!`
+        );
+        await fetchWinningHistory();
+      } else {
+        alert(json.error?.message || "Mô phỏng thất bại");
+      }
+    } catch (e) {
+      console.error("Simulation error:", e);
+      alert("Lỗi kết nối khi mô phỏng");
+    } finally {
+      setSimulating(false);
     }
   };
 
@@ -185,15 +215,36 @@ export const WinningHistoryTracker: React.FC<WinningHistoryTrackerProps> = ({
             </p>
           </div>
 
-          <button
-            onClick={fetchWinningHistory}
-            disabled={loading}
-            className="self-start sm:self-center px-4 py-2 rounded-xl text-xs font-bold text-slate-300 hover:text-white bg-slate-800/80 hover:bg-slate-800 border border-slate-700 flex items-center gap-1.5 transition-all cursor-pointer disabled:opacity-50"
-          >
-            <RefreshCw className={`w-3.5 h-3.5 ${loading ? "animate-spin" : ""}`} />
-            Làm Mới
-          </button>
+          <div className="flex flex-wrap items-center gap-2 self-start sm:self-center">
+            {/* Temporary Simulation Trigger Button - Can be removed anytime */}
+            <button
+              onClick={handleSimulateWalkForward}
+              disabled={simulating}
+              className="px-4 py-2 rounded-xl text-xs font-bold text-slate-950 bg-gradient-to-r from-amber-400 to-yellow-300 hover:from-amber-300 hover:to-yellow-200 border border-amber-300/60 flex items-center gap-1.5 transition-all shadow-lg shadow-amber-500/20 cursor-pointer disabled:opacity-50"
+              title="Nạp dữ liệu thực nghiệm mô phỏng <20 ngày gần nhất cho cả Mega 6/45 và Power 6/55 với đầy đủ 6 thuật toán"
+            >
+              <Zap className={`w-3.5 h-3.5 text-slate-950 ${simulating ? "animate-spin" : ""}`} />
+              {simulating ? "Đang Mô Phỏng..." : "⚡ Nạp Dữ Liệu Mô Phỏng (<20 Ngày)"}
+            </button>
+
+            <button
+              onClick={fetchWinningHistory}
+              disabled={loading || simulating}
+              className="px-4 py-2 rounded-xl text-xs font-bold text-slate-300 hover:text-white bg-slate-800/80 hover:bg-slate-800 border border-slate-700 flex items-center gap-1.5 transition-all cursor-pointer disabled:opacity-50"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${loading ? "animate-spin" : ""}`} />
+              Làm Mới
+            </button>
+          </div>
         </div>
+
+        {/* Simulate Notice Banner */}
+        {simulateNotice && (
+          <div className="mt-4 p-4 rounded-2xl bg-emerald-950/40 border border-emerald-500/40 flex items-center gap-3 text-emerald-300 text-xs md:text-sm animate-in fade-in duration-300">
+            <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0" />
+            <div className="font-semibold">{simulateNotice}</div>
+          </div>
+        )}
 
         {/* 4 KPI Cards */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mt-6">

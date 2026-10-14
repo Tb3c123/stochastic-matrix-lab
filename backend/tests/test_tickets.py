@@ -110,4 +110,18 @@ async def test_winning_history_endpoint():
         assert "win_rate_pct" in summary
         assert "tier_counts" in summary
 
+@pytest.mark.asyncio
+async def test_simulate_walk_forward_endpoint():
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        res = await client.post("/api/v1/tickets/simulate-walk-forward?days_back=20")
+        assert res.status_code == 200
+        json_data = res.json()
+        assert json_data["success"] is True
+        data = json_data["data"]
+        assert "total_simulated_tickets" in data
+        assert "total_winning_tickets" in data
+        assert "draws_simulated_count" in data
+
+
 
