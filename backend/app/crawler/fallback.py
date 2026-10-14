@@ -39,8 +39,10 @@ def parse_github_jsonl(jsonl_text: str, game_code: str) -> List[Dict[str, Any]]:
             continue
     return records
 
+from app.crawler.baseline_history import get_baseline_history
+
 async def fetch_fallback_history(game_code: str) -> List[Dict[str, Any]]:
-    """Fetch history from GitHub mirror NDJSON data stream."""
+    """Fetch history from GitHub mirror NDJSON data stream with local baseline fail-safe."""
     filename = "power645.jsonl" if game_code == "mega_6_45" else "power655.jsonl"
     url = f"{settings.GITHUB_DATA_FALLBACK_URL}/{filename}"
     
@@ -48,9 +50,15 @@ async def fetch_fallback_history(game_code: str) -> List[Dict[str, Any]]:
         "User-Agent": "vietlot-crawler-agent"
     }
 
-    async with httpx.AsyncClient(timeout=15.0) as client:
-        response = await client.get(url, headers=headers)
-        if response.status_code == 200:
-            return parse_github_jsonl(response.text, game_code)
-        else:
-            raise RuntimeError(f"Fallback GitHub stream returned HTTP {response.status_code}")
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            response = await client.get(url, headers=headers)
+            if response.status_code == 200:
+                parsed = parse_github_jsonl(response.text, game_code)
+                if len(parsed) >= 15:
+                    return parsed
+    except Exception:
+        pass
+
+    # Guaranteed fallback to embedded baseline dataset
+    return get_baseline_history(game_code)

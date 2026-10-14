@@ -15,6 +15,29 @@ from app.services.scheduler import auto_cycle_worker
 async def lifespan(app: FastAPI):
     # Initialize DB & seed default games on startup
     await init_db()
+    
+    # Auto-seed initial historical draws if empty on startup
+    try:
+        from app.database import AsyncSessionLocal
+        from sqlalchemy import select, func
+        from app.models.game import LotteryGame
+        from app.models.draw import DrawResult
+        from app.crawler.manager import CrawlerManager
+
+        async with AsyncSessionLocal() as session:
+            manager = CrawlerManager(session)
+            for g_code in ["mega_6_45", "power_6_55"]:
+                g_res = await session.execute(select(LotteryGame).where(LotteryGame.code == g_code))
+                g_obj = g_res.scalar_one_or_none()
+                if g_obj:
+                    cnt_res = await session.execute(
+                        select(func.count(DrawResult.id)).where(DrawResult.game_id == g_obj.id)
+                    )
+                    if (cnt_res.scalar() or 0) < 15:
+                        await manager.seed_historical_data(g_code, limit=30)
+    except Exception:
+        pass
+
     # Start automated 10:00 AM daily continuous learning scheduler
     worker_task = asyncio.create_task(auto_cycle_worker())
     yield

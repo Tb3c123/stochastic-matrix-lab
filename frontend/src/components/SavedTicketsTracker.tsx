@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { API_BASE_URL } from "@/config/api";
 import {
   BookmarkCheck,
@@ -21,7 +21,10 @@ import {
   ThumbsDown,
   AlertTriangle,
   Lightbulb,
-  Compass
+  Compass,
+  Calendar,
+  Layers,
+  Sparkles
 } from "lucide-react";
 import { AlgorithmComparisonChart } from "@/components/AlgorithmComparisonChart";
 
@@ -34,8 +37,12 @@ export const SavedTicketsTracker: React.FC<SavedTicketsTrackerProps> = ({ gameCo
   const [tickets, setTickets] = useState<any[]>([]);
   const [algoPerf, setAlgoPerf] = useState<any[]>([]);
   const [selectedAlgoFilter, setSelectedAlgoFilter] = useState<string>("all");
+  const [selectedDateFilter, setSelectedDateFilter] = useState<string>("all");
+  const [collapsedDates, setCollapsedDates] = useState<Record<string, boolean>>({});
+  const [viewMode, setViewMode] = useState<"grouped" | "flat">("grouped");
   const [loading, setLoading] = useState<boolean>(false);
   const [evaluating, setEvaluating] = useState<boolean>(false);
+  const [simulating, setSimulating] = useState<boolean>(false);
   const [expandedId, setExpandedId] = useState<number | null>(null);
   const [openRowAudits, setOpenRowAudits] = useState<Record<string, boolean>>({});
   const [evaluateNotice, setEvaluateNotice] = useState<string | null>(null);
@@ -43,6 +50,10 @@ export const SavedTicketsTracker: React.FC<SavedTicketsTrackerProps> = ({ gameCo
   const toggleRowAudit = (ticketId: number, rowIdx: number) => {
     const key = `${ticketId}-${rowIdx}`;
     setOpenRowAudits((prev) => ({ ...prev, [key]: !prev[key] }));
+  };
+
+  const toggleDateCollapse = (periodKey: string) => {
+    setCollapsedDates((prev) => ({ ...prev, [periodKey]: !prev[periodKey] }));
   };
 
   const fetchTicketsAndPerformance = async () => {
@@ -89,16 +100,53 @@ export const SavedTicketsTracker: React.FC<SavedTicketsTrackerProps> = ({ gameCo
     }
   };
 
+  const handleSimulateWalkForward = async () => {
+    if (!confirm("Bắt đầu nạp mô phỏng Walk-Forward đối soát ~20 ngày gần nhất cho cả Mega 6/45 và Power 6/55 với đầy đủ 6 thuật toán?")) {
+      return;
+    }
+    setSimulating(true);
+    setEvaluateNotice(null);
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/v1/tickets/simulate-walk-forward?days_back=20`, {
+        method: "POST"
+      });
+      const json = await res.json();
+      if (json.success && json.data) {
+        const d = json.data;
+        setEvaluateNotice(
+          `⚡ Đã nạp thành công ${d.total_simulated_tickets} vé (${d.total_winning_tickets} vé trúng giải - ${new Intl.NumberFormat("vi-VN").format(d.total_prize_vnd)} đ) qua ${d.draws_simulated_count} kỳ quay thực tế!`
+        );
+        await fetchTicketsAndPerformance();
+      } else {
+        alert(json.error?.message || "Mô phỏng thất bại");
+      }
+    } catch (e) {
+      console.error("Simulation error:", e);
+      alert("Lỗi kết nối khi nạp dữ liệu mô phỏng");
+    } finally {
+      setSimulating(false);
+    }
+  };
+
   useEffect(() => {
     fetchTicketsAndPerformance();
   }, [gameCode, refreshTrigger]);
 
-  if (tickets.length === 0 && !loading) {
-    return null;
-  }
-
   const formatVND = (amount: number) => {
     return new Intl.NumberFormat("vi-VN").format(amount) + " đ";
+  };
+
+  const formatDate = (dateStr: string) => {
+    if (!dateStr || dateStr === "N/A") return "Chưa xác định";
+    try {
+      const parts = dateStr.split("-");
+      if (parts.length === 3) {
+        return `${parts[2]}/${parts[1]}/${parts[0]}`;
+      }
+      return dateStr;
+    } catch {
+      return dateStr;
+    }
   };
 
   const getStrategyBadge = (stratCode: string) => {
@@ -248,6 +296,371 @@ export const SavedTicketsTracker: React.FC<SavedTicketsTrackerProps> = ({ gameCo
 
   const filteredTickets = tickets.filter((t) => isTicketMatchingAlgo(t, selectedAlgoFilter));
 
+  // Group tickets by target_draw_period or target_draw_date
+  const dateGroups = useMemo(() => {
+    const groupsMap: Record<string, {
+      period: string;
+      date: string;
+      tickets: any[];
+      totalPrize: number;
+      winningTicketsCount: number;
+      totalRows: number;
+    }> = {};
+
+    filteredTickets.forEach((t) => {
+      const key = t.target_draw_period || t.target_draw_date || "Chưa xác định";
+      if (!groupsMap[key]) {
+        groupsMap[key] = {
+          period: t.target_draw_period || "",
+          date: t.target_draw_date || "",
+          tickets: [],
+          totalPrize: 0,
+          winningTicketsCount: 0,
+          totalRows: 0
+        };
+      }
+      groupsMap[key].tickets.push(t);
+      groupsMap[key].totalRows += (t.rows_count || t.rows?.length || 0);
+      const prize = t.matched_results?.total_prize_vnd || 0;
+      groupsMap[key].totalPrize += prize;
+      if (prize > 0) {
+        groupsMap[key].winningTicketsCount += 1;
+      }
+    });
+
+    return Object.entries(groupsMap).sort(([keyA, a], [keyB, b]) => {
+      if (a.date && b.date) {
+        return b.date.localeCompare(a.date);
+      }
+      return keyB.localeCompare(keyA, undefined, { numeric: true });
+    });
+  }, [filteredTickets]);
+
+  // Render a single ticket card
+  const renderTicketCard = (ticket: any) => {
+    const isPending = ticket.status === "pending";
+    const isExpanded = expandedId === ticket.id;
+    const analysis = ticket.predicted_analysis || {};
+    const stratInfo = analysis.strategy_info || {};
+    const matchResult = ticket.matched_results;
+    const stratBadge = getStrategyBadge(ticket.strategy);
+
+    return (
+      <div
+        key={ticket.id}
+        className={`border rounded-2xl p-5 transition-all ${
+          isPending
+            ? "bg-slate-800/30 border-slate-800 hover:border-slate-700"
+            : matchResult?.total_prize_vnd > 0
+            ? "bg-emerald-950/20 border-emerald-800/40"
+            : "bg-slate-800/50 border-slate-700"
+        }`}
+      >
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+          {/* Header Info & Strategy Tag */}
+          <div className="flex flex-wrap items-center gap-3">
+            {/* Status Badge */}
+            <span
+              className={`px-3 py-1 rounded-full text-xs font-bold flex items-center gap-1.5 ${
+                isPending
+                  ? "bg-amber-500/10 text-amber-400 border border-amber-500/20"
+                  : "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20"
+              }`}
+            >
+              {isPending ? <Clock className="w-3.5 h-3.5" /> : <CheckCircle2 className="w-3.5 h-3.5" />}
+              {isPending ? `Chờ Kỳ Xổ #${ticket.target_draw_period}` : `Đã Đối Soát Kỳ #${ticket.target_draw_period}`}
+            </span>
+
+            {/* Strategy Badge */}
+            <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold border ${stratBadge.bg}`}>
+              <Dna className="w-3.5 h-3.5" /> {stratBadge.label}
+            </span>
+
+            <div className="text-xs text-slate-400 flex items-center gap-2">
+              <span>Vé {ticket.rows_count} dãy</span>
+              <span>•</span>
+              <span>Ngày quay: <b className="text-slate-300">{formatDate(ticket.target_draw_date)}</b></span>
+            </div>
+          </div>
+
+          {/* Accuracy & Probability Badges */}
+          <div className="flex flex-wrap items-center gap-2.5 text-xs">
+            <div className="bg-slate-800/90 px-3 py-1.5 rounded-xl border border-slate-700/80 text-slate-300 flex items-center gap-1.5">
+              <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
+              <span>Độ chính xác thuật toán:</span>
+              <b className="text-amber-400">{stratInfo.historical_accuracy_pct || 80.0}% ({stratInfo.confidence_rating || "A"})</b>
+            </div>
+
+            <div className="bg-slate-800/90 px-3 py-1.5 rounded-xl border border-slate-700/80 text-slate-300">
+              Xác suất trúng ít nhất 1 giải: <b className="text-white">{analysis.any_prize_probability_pct}%</b>
+            </div>
+
+            {matchResult && matchResult.total_prize_vnd > 0 && (
+              <div className="bg-emerald-500/20 text-emerald-300 px-3 py-1.5 rounded-xl border border-emerald-500/30 font-bold flex items-center gap-1">
+                <Trophy className="w-3.5 h-3.5" /> Trúng {formatVND(matchResult.total_prize_vnd)}
+              </div>
+            )}
+
+            <button
+              onClick={() => setExpandedId(isExpanded ? null : ticket.id)}
+              className="p-1.5 rounded-xl text-slate-400 hover:text-white bg-slate-800 hover:bg-slate-700 cursor-pointer border border-slate-700"
+              title="Xem chi tiết phân tích thuật toán"
+            >
+              {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+            </button>
+          </div>
+        </div>
+
+        {/* Rows Display */}
+        <div className="mt-4 pt-4 border-t border-slate-800 space-y-3">
+          {ticket.rows.map((row: number[], rIdx: number) => {
+            const evalRow = matchResult?.rows_evaluation?.[rIdx];
+            const matchedNums: number[] = evalRow?.matched_numbers || [];
+            const rowForecast = analysis?.row_forecasts?.[rIdx] || {};
+            const audit = rowForecast?.audit;
+            const rowKey = `${ticket.id}-${rIdx}`;
+            const isAuditOpen = !!openRowAudits[rowKey];
+
+            return (
+              <div
+                key={rIdx}
+                className="bg-slate-850/50 rounded-xl border border-slate-800/60 transition-all overflow-hidden"
+              >
+                {/* Main Row Bar */}
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3">
+                  <div className="flex flex-wrap items-center gap-3">
+                    <span className="w-7 h-7 rounded-lg bg-slate-800 text-slate-400 text-xs font-bold flex items-center justify-center shrink-0">
+                      {String.fromCharCode(65 + rIdx)}
+                    </span>
+
+                    {/* Specific Algorithm used for this row */}
+                    {(() => {
+                      const rowBadge = getRowAlgorithmBadge(rowForecast, ticket.strategy, rIdx);
+                      return (
+                        <div className="flex items-center gap-1.5">
+                          <span
+                            className={`text-[10px] font-bold px-2 py-0.5 rounded-full border shrink-0 ${rowBadge.cls}`}
+                            title={rowBadge.fullName}
+                          >
+                            {rowBadge.label}
+                          </span>
+                        </div>
+                      );
+                    })()}
+
+                    <div className="flex flex-wrap items-center gap-2">
+                      {row.map((num) => {
+                        const isMatch = matchedNums.includes(num);
+                        return (
+                          <span
+                            key={num}
+                            className={`w-8 h-8 rounded-full text-xs font-bold flex items-center justify-center transition-all ${
+                              isMatch
+                                ? "bg-emerald-500 text-white ring-2 ring-emerald-300 shadow-lg scale-105"
+                                : "ball-red text-white"
+                            }`}
+                          >
+                            {num < 10 ? `0${num}` : num}
+                          </span>
+                        );
+                      })}
+                      {ticket.game_code === "power_6_55" && (
+                        <span className="w-8 h-8 rounded-full ball-special text-slate-950 font-black text-xs flex items-center justify-center border-2 border-yellow-300 shadow-md">
+                          {rowForecast?.special_number ? (rowForecast.special_number < 10 ? `0${rowForecast.special_number}` : rowForecast.special_number) : "★"}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Evaluation / Match Count or Audit Trigger */}
+                  <div className="flex items-center gap-2 text-xs">
+                    {evalRow ? (
+                      <div className="flex items-center gap-2">
+                        <span
+                          className={`px-2.5 py-1 rounded-lg font-bold text-xs ${
+                            evalRow.match_count >= 3
+                              ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30"
+                              : "bg-slate-800 text-slate-400"
+                          }`}
+                        >
+                          Trùng {evalRow.match_count}/6 số
+                          {evalRow.prize_amount > 0 && ` (${evalRow.prize_name} - ${formatVND(evalRow.prize_amount)})`}
+                        </span>
+                      </div>
+                    ) : (
+                      <span className="text-slate-500 text-xs italic">Đang chờ quay...</span>
+                    )}
+
+                    {audit && (
+                      <button
+                        onClick={() => toggleRowAudit(ticket.id, rIdx)}
+                        className={`px-2.5 py-1 rounded-lg font-bold text-[11px] flex items-center gap-1 border transition-all cursor-pointer ${
+                          audit.score >= 80
+                            ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/30 hover:bg-emerald-500/20"
+                            : audit.score >= 60
+                            ? "bg-amber-500/10 text-amber-400 border-amber-500/30 hover:bg-amber-500/20"
+                            : "bg-red-500/10 text-red-400 border-red-500/30 hover:bg-red-500/20"
+                        }`}
+                      >
+                        <ShieldCheck className="w-3 h-3" />
+                        <span>Thẩm định: {audit.score}đ</span>
+                        {isAuditOpen ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {/* Audit Collapsible Details */}
+                {isAuditOpen && audit && (
+                  <div className="p-3.5 bg-slate-900/90 border-t border-slate-800 text-xs space-y-3">
+                    <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-800/80 pb-2">
+                      <div className="flex items-center gap-2">
+                        <span className="font-bold text-slate-300">Kết Luận Thẩm Định:</span>
+                        <span
+                          className={`font-black px-2 py-0.5 rounded text-[11px] ${
+                            audit.verdict_code === "optimal"
+                              ? "bg-emerald-500/20 text-emerald-300"
+                              : audit.verdict_code === "acceptable"
+                              ? "bg-sky-500/20 text-sky-300"
+                              : audit.verdict_code === "caution"
+                              ? "bg-amber-500/20 text-amber-300"
+                              : "bg-red-500/20 text-red-300"
+                          }`}
+                        >
+                          {audit.verdict_label}
+                        </span>
+                      </div>
+                      <span className="text-[11px] text-slate-400">
+                        Phân tích dựa trên 100 kỳ quay lịch sử Vietlott
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-[11px]">
+                      <div className="bg-emerald-950/20 border border-emerald-900/40 rounded-xl p-2.5 space-y-1">
+                        <span className="font-bold text-emerald-400 flex items-center gap-1.5">
+                          <ThumbsUp className="w-3.5 h-3.5" /> Ưu Điểm Xác Suất:
+                        </span>
+                        <ul className="list-disc list-inside space-y-0.5 text-slate-300">
+                          {audit.pros.map((p: string, pIdx: number) => (
+                            <li key={pIdx}>{p}</li>
+                          ))}
+                        </ul>
+                      </div>
+
+                      <div className="bg-slate-900 border border-slate-800 rounded-xl p-2.5 space-y-1">
+                        <span className="font-bold text-amber-400 flex items-center gap-1.5">
+                          <AlertTriangle className="w-3.5 h-3.5" /> Điểm Cần Lưu Ý / Rủi Ro:
+                        </span>
+                        <ul className="list-disc list-inside space-y-0.5 text-slate-300">
+                          {audit.cons.length > 0 ? (
+                            audit.cons.map((c: string, cIdx: number) => (
+                              <li key={cIdx}>{c}</li>
+                            ))
+                          ) : (
+                            <li className="text-emerald-400/80 italic">Dãy số không ghi nhận bất thường xác suất lớn</li>
+                          )}
+                        </ul>
+                      </div>
+                    </div>
+
+                    {audit.tactical_advice && (
+                      <div className="p-3 rounded-xl bg-indigo-950/30 border border-indigo-800/40 flex items-start gap-2.5 text-xs text-indigo-200">
+                        <Compass className="w-4 h-4 text-indigo-400 shrink-0 mt-0.5" />
+                        <div className="space-y-0.5">
+                          <span className="font-bold text-indigo-300">Chiến Thuật Phân Bổ:</span>
+                          <p className="text-[11px] text-slate-300 leading-relaxed">
+                            {audit.tactical_advice}
+                          </p>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Expanded Algorithm & Learning Details */}
+        {isExpanded && (
+          <div className="mt-4 p-5 rounded-2xl bg-slate-950/80 border border-slate-800 text-xs text-slate-300 space-y-3">
+            <div className="flex items-center justify-between border-b border-slate-800/80 pb-2">
+              <span className="font-bold text-amber-400 flex items-center gap-1.5 text-sm">
+                <TrendingUp className="w-4 h-4" /> Đánh Giá Chi Tiết Hiệu Suất Thuật Toán {stratInfo.strategy_name || ticket.strategy}
+              </span>
+              <span className="text-[11px] text-slate-400">Mức rủi ro: <b className="text-white">{stratInfo.risk_level || "Ổn định"}</b></span>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
+              <div className="space-y-1.5">
+                <p className="text-slate-400"><b>Nguyên lý hoạt động:</b> {stratInfo.description || "Phân phối chu kỳ xác suất theo dữ liệu lịch sử."}</p>
+                <p className="text-slate-400"><b>Ưu thế thuật toán:</b> {stratInfo.advantage || "Tối ưu hóa độ bao phủ và cân đối chẵn lẻ."}</p>
+              </div>
+
+              <div className="space-y-1.5 bg-slate-900/60 p-3 rounded-xl border border-slate-800/60">
+                <div className="flex justify-between">
+                  <span className="text-slate-400">Độ phủ con số độc nhất:</span>
+                  <b className="text-white">{analysis.unique_numbers_count} số ({analysis.coverage_pct}%)</b>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-400">Tỷ lệ Chẵn / Lẻ:</span>
+                  <b className="text-white">{analysis.parity_ratio}</b>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-400">Điểm đánh giá thuật toán:</span>
+                  <b className="text-amber-400">{stratInfo.algorithm_score || 85.0} / 100</b>
+                </div>
+              </div>
+            </div>
+
+            {matchResult?.learning_feedback && (
+              <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-300 text-xs">
+                <b>Nhật ký học hỏi sau đối soát:</b> {matchResult.learning_feedback}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  // If no tickets exist and not loading, show clear Empty State with Action Buttons
+  if (tickets.length === 0 && !loading) {
+    return (
+      <div className="bg-slate-900 border border-slate-800 rounded-3xl p-8 md:p-12 text-center shadow-2xl space-y-6">
+        <div className="w-16 h-16 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-amber-400 mx-auto flex items-center justify-center">
+          <BookmarkCheck className="w-8 h-8" />
+        </div>
+        <div className="max-w-md mx-auto space-y-2">
+          <h3 className="text-xl font-bold text-white">Chưa Có Vé Nào Trong Sổ Đối Soát ({gameCode === "mega_6_45" ? "Mega 6/45" : "Power 6/55"})</h3>
+          <p className="text-sm text-slate-400">
+            Hệ thống chưa tìm thấy vé đã lưu hoặc dữ liệu mô phỏng đối soát cho loại vé này. Bạn có thể nạp ngay dữ liệu mô phỏng đối soát 20 ngày gần nhất (đầy đủ 6 thuật toán) để xem kết quả.
+          </p>
+        </div>
+
+        <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
+          <button
+            onClick={handleSimulateWalkForward}
+            disabled={simulating}
+            className="px-5 py-3 rounded-xl bg-gradient-to-r from-amber-500 to-yellow-400 text-slate-950 font-black text-sm flex items-center gap-2 hover:shadow-lg hover:shadow-amber-500/20 transition-all cursor-pointer disabled:opacity-50"
+          >
+            <Zap className={`w-4 h-4 ${simulating ? "animate-spin" : ""}`} />
+            {simulating ? "Đang Nạp & Đối Soát..." : "⚡ Nạp Dữ Liệu Mô Phỏng (<20 Ngày)"}
+          </button>
+
+          <button
+            onClick={fetchTicketsAndPerformance}
+            disabled={loading}
+            className="px-5 py-3 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-white font-bold text-sm flex items-center gap-2 transition-all cursor-pointer disabled:opacity-50"
+          >
+            <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
+            {loading ? "Đang tải..." : "Tải Lại Sổ Vé"}
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 md:p-8 shadow-2xl space-y-8">
       {/* Header & Controls */}
@@ -257,22 +670,42 @@ export const SavedTicketsTracker: React.FC<SavedTicketsTrackerProps> = ({ gameCo
             <BookmarkCheck className="w-5 h-5" />
           </div>
           <div>
-            <h3 className="text-xl md:text-2xl font-bold text-white">Sổ Theo Dõi Vé & Đánh Giá Độ Chính Xác Thuật Toán</h3>
+            <h3 className="text-xl md:text-2xl font-bold text-white">Sổ Theo Dõi Vé & Đối Soát Kết Quả Theo Ngày</h3>
             <p className="text-xs text-slate-400">
-              Phân loại vé theo thuật toán sinh số, đánh giá mức độ tỉ lệ xác suất chính xác thực nghiệm và đối soát kỳ xổ tiếp theo.
+              Phân loại vé theo ngày mở thưởng và thuật toán, đối soát chi tiết từng dãy số và đánh giá độ chính xác thực tế.
             </p>
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          {/* Quick Simulate Button right inside Ledger */}
+          <button
+            onClick={handleSimulateWalkForward}
+            disabled={simulating}
+            className="px-3.5 py-2 rounded-xl text-xs font-black text-slate-950 bg-gradient-to-r from-amber-500 to-yellow-400 hover:from-amber-400 hover:to-yellow-300 flex items-center gap-1.5 transition-all cursor-pointer disabled:opacity-50 shadow-md"
+            title="Nạp dữ liệu mô phỏng đối soát 20 ngày gần nhất (đầy đủ 6 thuật toán)"
+          >
+            <Zap className={`w-3.5 h-3.5 ${simulating ? "animate-spin" : ""}`} />
+            {simulating ? "Đang Nạp..." : "⚡ Nạp Vé Mô Phỏng"}
+          </button>
+
           <button
             onClick={handleEvaluate}
             disabled={evaluating}
-            className="px-4 py-2 rounded-xl text-xs font-bold text-white bg-slate-800 hover:bg-slate-700 border border-slate-700 flex items-center gap-1.5 transition-all cursor-pointer disabled:opacity-50 shadow-md"
+            className="px-3.5 py-2 rounded-xl text-xs font-bold text-white bg-slate-800 hover:bg-slate-700 border border-slate-700 flex items-center gap-1.5 transition-all cursor-pointer disabled:opacity-50 shadow-md"
             title="Kiểm tra đối soát kỳ xổ mới nhất & cập nhật mô hình học hỏi"
           >
             <RefreshCw className={`w-3.5 h-3.5 text-amber-400 ${evaluating ? "animate-spin" : ""}`} />
             {evaluating ? "Đang Đối Soát..." : "Đối Soát Kỳ Mới"}
+          </button>
+
+          <button
+            onClick={fetchTicketsAndPerformance}
+            disabled={loading}
+            className="p-2 rounded-xl text-slate-400 hover:text-white bg-slate-800 hover:bg-slate-700 border border-slate-700 transition-all cursor-pointer disabled:opacity-50"
+            title="Tải lại sổ vé"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${loading ? "animate-spin" : ""}`} />
           </button>
         </div>
       </div>
@@ -293,7 +726,7 @@ export const SavedTicketsTracker: React.FC<SavedTicketsTrackerProps> = ({ gameCo
               <BarChart3 className="w-4 h-4 text-amber-400" />
               Đánh Giá Mức Độ Tỉ Lệ Xác Suất Chính Xác Theo Từng Thuật Toán
             </h4>
-            <span className="text-[11px] text-slate-500">Dựa trên kiểm nghiệm 100 kỳ quá khứ & đối soát thực tế</span>
+            <span className="text-[11px] text-slate-500">Dựa trên kiểm nghiệm các kỳ quá khứ & đối soát thực tế</span>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -342,481 +775,235 @@ export const SavedTicketsTracker: React.FC<SavedTicketsTrackerProps> = ({ gameCo
         </div>
       )}
 
-      {/* Filter by Algorithm */}
-      <div className="flex flex-wrap items-center gap-2 pt-2">
-        <span className="text-xs text-slate-400 font-semibold mr-1">Lọc theo thuật toán:</span>
-        <button
-          onClick={() => setSelectedAlgoFilter("all")}
-          className={`px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-            selectedAlgoFilter === "all"
-              ? "bg-amber-500 text-slate-950 shadow-md"
-              : "bg-slate-800/80 text-slate-400 hover:text-white border border-slate-700"
-          }`}
-        >
-          Tất Cả ({countAll})
-        </button>
-        <button
-          onClick={() => setSelectedAlgoFilter("hybrid_ai_learned")}
-          className={`px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-            selectedAlgoFilter === "hybrid_ai_learned"
-              ? "bg-indigo-500 text-white shadow-md"
-              : "bg-slate-800/80 text-slate-400 hover:text-white border border-slate-700"
-          }`}
-        >
-          AI Hybrid ({countHybrid})
-        </button>
-        <button
-          onClick={() => setSelectedAlgoFilter("balanced")}
-          className={`px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-            selectedAlgoFilter === "balanced"
-              ? "bg-emerald-500 text-slate-950 shadow-md"
-              : "bg-slate-800/80 text-slate-400 hover:text-white border border-slate-700"
-          }`}
-        >
-          Cân Bằng ({countBalanced})
-        </button>
-        <button
-          onClick={() => setSelectedAlgoFilter("mean_reversion")}
-          className={`px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-            selectedAlgoFilter === "mean_reversion"
-              ? "bg-sky-500 text-slate-950 shadow-md"
-              : "bg-slate-800/80 text-slate-400 hover:text-white border border-slate-700"
-          }`}
-        >
-          Hồi Quy ({countMean})
-        </button>
-        <button
-          onClick={() => setSelectedAlgoFilter("pure_random")}
-          className={`px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-            selectedAlgoFilter === "pure_random"
-              ? "bg-amber-500 text-slate-950 shadow-md"
-              : "bg-slate-800/80 text-slate-400 hover:text-white border border-slate-700"
-          }`}
-        >
-          Ngẫu Nhiên ({countRandom})
-        </button>
-        <button
-          onClick={() => setSelectedAlgoFilter("custom_manual")}
-          className={`px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-            selectedAlgoFilter === "custom_manual"
-              ? "bg-purple-500 text-white shadow-md"
-              : "bg-slate-800/80 text-slate-400 hover:text-white border border-slate-700"
-          }`}
-        >
-          Điền Tay ({countCustom})
-        </button>
-        <button
-          onClick={() => setSelectedAlgoFilter("mixed")}
-          className={`px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-            selectedAlgoFilter === "mixed"
-              ? "bg-fuchsia-600 text-white shadow-md"
-              : "bg-slate-800/80 text-slate-400 hover:text-white border border-slate-700"
-          }`}
-        >
-          Hỗn Hợp ({countMixed})
-        </button>
-      </div>
+      {/* FILTER CONTROLS: 1. Algorithm Filter, 2. Date Filter & View Mode */}
+      <div className="space-y-4 pt-2">
+        {/* Filter by Algorithm */}
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-xs text-slate-400 font-semibold mr-1">Lọc theo thuật toán:</span>
+          <button
+            onClick={() => setSelectedAlgoFilter("all")}
+            className={`px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+              selectedAlgoFilter === "all"
+                ? "bg-amber-500 text-slate-950 shadow-md"
+                : "bg-slate-800/80 text-slate-400 hover:text-white border border-slate-700"
+            }`}
+          >
+            Tất Cả ({countAll})
+          </button>
+          <button
+            onClick={() => setSelectedAlgoFilter("hybrid_ai_learned")}
+            className={`px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+              selectedAlgoFilter === "hybrid_ai_learned"
+                ? "bg-indigo-500 text-white shadow-md"
+                : "bg-slate-800/80 text-slate-400 hover:text-white border border-slate-700"
+            }`}
+          >
+            AI Hybrid ({countHybrid})
+          </button>
+          <button
+            onClick={() => setSelectedAlgoFilter("balanced")}
+            className={`px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+              selectedAlgoFilter === "balanced"
+                ? "bg-emerald-500 text-slate-950 shadow-md"
+                : "bg-slate-800/80 text-slate-400 hover:text-white border border-slate-700"
+            }`}
+          >
+            Cân Bằng ({countBalanced})
+          </button>
+          <button
+            onClick={() => setSelectedAlgoFilter("mean_reversion")}
+            className={`px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+              selectedAlgoFilter === "mean_reversion"
+                ? "bg-sky-500 text-slate-950 shadow-md"
+                : "bg-slate-800/80 text-slate-400 hover:text-white border border-slate-700"
+            }`}
+          >
+            Hồi Quy ({countMean})
+          </button>
+          <button
+            onClick={() => setSelectedAlgoFilter("pure_random")}
+            className={`px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+              selectedAlgoFilter === "pure_random"
+                ? "bg-amber-500 text-slate-950 shadow-md"
+                : "bg-slate-800/80 text-slate-400 hover:text-white border border-slate-700"
+            }`}
+          >
+            Ngẫu Nhiên ({countRandom})
+          </button>
+          <button
+            onClick={() => setSelectedAlgoFilter("custom_manual")}
+            className={`px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+              selectedAlgoFilter === "custom_manual"
+                ? "bg-purple-500 text-white shadow-md"
+                : "bg-slate-800/80 text-slate-400 hover:text-white border border-slate-700"
+            }`}
+          >
+            Điền Tay ({countCustom})
+          </button>
+          <button
+            onClick={() => setSelectedAlgoFilter("mixed")}
+            className={`px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+              selectedAlgoFilter === "mixed"
+                ? "bg-fuchsia-600 text-white shadow-md"
+                : "bg-slate-800/80 text-slate-400 hover:text-white border border-slate-700"
+            }`}
+          >
+            Hỗn Hợp ({countMixed})
+          </button>
+        </div>
 
-      {/* Tickets List */}
-      <div className="space-y-4">
-        {filteredTickets.map((ticket) => {
-          const isPending = ticket.status === "pending";
-          const isExpanded = expandedId === ticket.id;
-          const analysis = ticket.predicted_analysis || {};
-          const stratInfo = analysis.strategy_info || {};
-          const matchResult = ticket.matched_results;
-          const stratBadge = getStrategyBadge(ticket.strategy);
+        {/* Filter by Date & Draw Period Toolbar */}
+        <div className="bg-slate-950/60 p-4 rounded-2xl border border-slate-800 space-y-3">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+            <span className="text-xs text-slate-300 font-bold flex items-center gap-1.5">
+              <Calendar className="w-4 h-4 text-amber-400" />
+              Lọc theo ngày mở thưởng & kỳ quay ({dateGroups.length} kỳ quay):
+            </span>
 
-          return (
-            <div
-              key={ticket.id}
-              className={`border rounded-2xl p-5 transition-all ${
-                isPending
-                  ? "bg-slate-800/30 border-slate-800 hover:border-slate-700"
-                  : matchResult?.total_prize_vnd > 0
-                  ? "bg-emerald-950/20 border-emerald-800/40"
-                  : "bg-slate-800/50 border-slate-700"
+            {/* View Mode Toggle: Grouped vs Flat */}
+            <div className="flex items-center gap-1 bg-slate-900 p-1 rounded-xl border border-slate-800 shrink-0">
+              <button
+                onClick={() => setViewMode("grouped")}
+                className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1 ${
+                  viewMode === "grouped"
+                    ? "bg-amber-500 text-slate-950 shadow"
+                    : "text-slate-400 hover:text-white"
+                }`}
+              >
+                <Layers className="w-3.5 h-3.5" />
+                Gom theo ngày
+              </button>
+              <button
+                onClick={() => setViewMode("flat")}
+                className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1 ${
+                  viewMode === "flat"
+                    ? "bg-amber-500 text-slate-950 shadow"
+                    : "text-slate-400 hover:text-white"
+                }`}
+              >
+                Danh sách phẳng
+              </button>
+            </div>
+          </div>
+
+          {/* Date Pills for Quick Date Filtering */}
+          <div className="flex flex-wrap items-center gap-2 pt-1 max-h-36 overflow-y-auto">
+            <button
+              onClick={() => setSelectedDateFilter("all")}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer shrink-0 ${
+                selectedDateFilter === "all"
+                  ? "bg-amber-500 text-slate-950 shadow-md font-black"
+                  : "bg-slate-800/90 text-slate-300 hover:text-white border border-slate-700"
               }`}
             >
-              <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-                {/* Header Info & Strategy Tag */}
-                <div className="flex flex-wrap items-center gap-3">
-                  {/* Status Badge */}
-                  <span
-                    className={`px-3 py-1 rounded-full text-xs font-bold flex items-center gap-1.5 ${
-                      isPending
-                        ? "bg-amber-500/10 text-amber-400 border border-amber-500/20"
-                        : "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20"
-                    }`}
-                  >
-                    {isPending ? <Clock className="w-3.5 h-3.5" /> : <CheckCircle2 className="w-3.5 h-3.5" />}
-                    {isPending ? `Chờ Kỳ Xổ #${ticket.target_draw_period}` : `Đã Đối Soát Kỳ #${ticket.target_draw_period}`}
-                  </span>
-
-                  {/* Strategy Badge */}
-                  <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold border ${stratBadge.bg}`}>
-                    <Dna className="w-3.5 h-3.5" /> {stratBadge.label}
-                  </span>
-
-                  <div className="text-xs text-slate-400 flex items-center gap-2">
-                    <span>Vé {ticket.rows_count} dãy</span>
-                    <span>•</span>
-                    <span>Ngày quay: <b className="text-slate-300">{ticket.target_draw_date}</b></span>
-                  </div>
-                </div>
-
-                {/* Accuracy & Probability Badges */}
-                <div className="flex flex-wrap items-center gap-2.5 text-xs">
-                  {/* Algorithm Accuracy Rating */}
-                  <div className="bg-slate-800/90 px-3 py-1.5 rounded-xl border border-slate-700/80 text-slate-300 flex items-center gap-1.5">
-                    <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
-                    <span>Độ chính xác thuật toán:</span>
-                    <b className="text-amber-400">{stratInfo.historical_accuracy_pct || 80.0}% ({stratInfo.confidence_rating || "A"})</b>
-                  </div>
-
-                  {/* Combined Win Probability */}
-                  <div className="bg-slate-800/90 px-3 py-1.5 rounded-xl border border-slate-700/80 text-slate-300">
-                    Xác suất trúng ít nhất 1 giải: <b className="text-white">{analysis.any_prize_probability_pct}%</b>
-                  </div>
-
-                  {matchResult && matchResult.total_prize_vnd > 0 && (
-                    <div className="bg-emerald-500/20 text-emerald-300 px-3 py-1.5 rounded-xl border border-emerald-500/30 font-bold flex items-center gap-1">
-                      <Trophy className="w-3.5 h-3.5" /> Trúng {formatVND(matchResult.total_prize_vnd)}
-                    </div>
+              Tất Cả Ngày ({filteredTickets.length} vé)
+            </button>
+            {dateGroups.map(([key, group]) => {
+              const isSelected = selectedDateFilter === group.period;
+              return (
+                <button
+                  key={key}
+                  onClick={() => setSelectedDateFilter(isSelected ? "all" : group.period)}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer shrink-0 border flex items-center gap-1.5 ${
+                    isSelected
+                      ? "bg-amber-500 text-slate-950 font-black border-amber-400 shadow-md"
+                      : group.winningTicketsCount > 0
+                      ? "bg-emerald-950/30 text-emerald-300 border-emerald-800/50 hover:bg-emerald-900/40"
+                      : "bg-slate-850 text-slate-400 hover:text-white border-slate-800 hover:border-slate-700"
+                  }`}
+                >
+                  <span>Kỳ #{group.period}</span>
+                  <span className="text-[11px] opacity-80">({formatDate(group.date)})</span>
+                  <span className="font-bold opacity-90">• {group.tickets.length} vé</span>
+                  {group.winningTicketsCount > 0 && (
+                    <span className="text-amber-400 font-black">🏆</span>
                   )}
-
-                  <button
-                    onClick={() => setExpandedId(isExpanded ? null : ticket.id)}
-                    className="p-1.5 rounded-xl text-slate-400 hover:text-white bg-slate-800 hover:bg-slate-700 cursor-pointer border border-slate-700"
-                    title="Xem chi tiết phân tích thuật toán"
-                  >
-                    {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-                  </button>
-                </div>
-              </div>
-
-              {/* Rows Display */}
-              <div className="mt-4 pt-4 border-t border-slate-800 space-y-3">
-                {ticket.rows.map((row: number[], rIdx: number) => {
-                  const evalRow = matchResult?.rows_evaluation?.[rIdx];
-                  const matchedNums: number[] = evalRow?.matched_numbers || [];
-                  const rowForecast = analysis?.row_forecasts?.[rIdx] || {};
-                  const audit = rowForecast?.audit;
-                  const rowKey = `${ticket.id}-${rIdx}`;
-                  const isAuditOpen = !!openRowAudits[rowKey];
-
-                  return (
-                    <div
-                      key={rIdx}
-                      className="bg-slate-850/50 rounded-xl border border-slate-800/60 transition-all overflow-hidden"
-                    >
-                      {/* Main Row Bar */}
-                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3">
-                        <div className="flex flex-wrap items-center gap-3">
-                          <span className="w-7 h-7 rounded-lg bg-slate-800 text-slate-400 text-xs font-bold flex items-center justify-center shrink-0">
-                            {String.fromCharCode(65 + rIdx)}
-                          </span>
-
-                          {/* Specific Algorithm used for this row */}
-                          {(() => {
-                            const rowBadge = getRowAlgorithmBadge(rowForecast, ticket.strategy, rIdx);
-                            return (
-                              <div className="flex items-center gap-1.5">
-                                <span
-                                  className={`text-[10px] font-bold px-2 py-0.5 rounded-full border shrink-0 ${rowBadge.cls}`}
-                                  title={rowBadge.fullName}
-                                >
-                                  {rowBadge.label}
-                                </span>
-                              </div>
-                            );
-                          })()}
-
-                          <div className="flex flex-wrap items-center gap-2">
-                            {row.map((num) => {
-                              const isMatch = matchedNums.includes(num);
-                              return (
-                                <span
-                                  key={num}
-                                  className={`w-8 h-8 rounded-full text-xs font-bold flex items-center justify-center transition-all ${
-                                    isMatch
-                                      ? "bg-emerald-500 text-white ring-2 ring-emerald-300 shadow-lg scale-105"
-                                      : "ball-red text-white"
-                                  }`}
-                                >
-                                  {num < 10 ? `0${num}` : num}
-                                </span>
-                              );
-                            })}
-
-                            {/* Special Number for Power 6/55 if present */}
-                            {rowForecast.special_number && (
-                              <>
-                                <span className="text-amber-500 font-bold text-xs">+</span>
-                                <span
-                                  className="w-8 h-8 rounded-full text-xs font-black flex items-center justify-center ball-gold text-slate-950 ring-2 ring-amber-400 shadow-md"
-                                  title="Số đặc biệt Jackpot 2"
-                                >
-                                  {rowForecast.special_number < 10 ? `0${rowForecast.special_number}` : rowForecast.special_number}
-                                </span>
-                              </>
-                            )}
-                          </div>
-
-                          {/* Forecast Probability Badges saved for this row */}
-                          <div className="flex flex-wrap items-center gap-1.5">
-                            {rowForecast.jackpot_probability_display && (
-                              <div className="text-[11px] font-semibold text-amber-300 bg-amber-500/10 border border-amber-500/20 px-2 py-0.5 rounded-md flex items-center gap-1">
-                                <Trophy className="w-3 h-3 text-amber-400" />
-                                <span>Độc Đắc: <b>{rowForecast.jackpot_probability_display}</b></span>
-                              </div>
-                            )}
-                            {rowForecast.prize_probabilities?.any_prize && (
-                              <div className="text-[11px] font-semibold text-emerald-300 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-md flex items-center gap-1">
-                                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-                                <span>Có Thưởng (≥3 số): <b>{rowForecast.prize_probabilities.any_prize.adjusted_ratio}</b> ({rowForecast.prize_probabilities.any_prize.edge_pct})</span>
-                              </div>
-                            )}
-                          </div>
-
-                          {/* Audit Verdict Badge */}
-                          {audit && (
-                            <button
-                              type="button"
-                              onClick={() => toggleRowAudit(ticket.id, rIdx)}
-                              className={`text-[11px] font-bold px-2.5 py-0.5 rounded-md border flex items-center gap-1.5 transition-all hover:brightness-125 cursor-pointer ${
-                                audit.verdict_code === "recommended"
-                                  ? "bg-emerald-500/15 text-emerald-400 border-emerald-500/30 hover:bg-emerald-500/25"
-                                  : audit.verdict_code === "consider"
-                                  ? "bg-amber-500/15 text-amber-400 border-amber-500/30 hover:bg-amber-500/25"
-                                  : "bg-rose-500/15 text-rose-400 border-rose-500/30 hover:bg-rose-500/25"
-                              }`}
-                              title="Bấm để xem phân tích lý do nên và không nên chọn dãy này"
-                            >
-                              {audit.verdict_code === "recommended" ? (
-                                <ThumbsUp className="w-3 h-3 text-emerald-400 shrink-0" />
-                              ) : audit.verdict_code === "consider" ? (
-                                <AlertTriangle className="w-3 h-3 text-amber-400 shrink-0" />
-                              ) : (
-                                <ThumbsDown className="w-3 h-3 text-rose-400 shrink-0" />
-                              )}
-                              <span>{audit.verdict_label}</span>
-                              <span className="font-mono text-[10px] opacity-80">({audit.score}đ)</span>
-                              {isAuditOpen ? (
-                                <ChevronUp className="w-3 h-3 opacity-70 ml-0.5" />
-                              ) : (
-                                <ChevronDown className="w-3 h-3 opacity-70 ml-0.5" />
-                              )}
-                            </button>
-                          )}
-                        </div>
-
-                        {/* Match Result or Waiting Status */}
-                        {evalRow ? (
-                          <div className="text-xs flex flex-wrap items-center gap-2.5 pt-2 sm:pt-0 border-t sm:border-t-0 border-slate-800">
-                            <span className="text-slate-400">Trùng <b className="text-amber-400">{evalRow.match_count}/6</b></span>
-                            <span className={`font-bold ${evalRow.prize_amount > 0 ? "text-emerald-400" : "text-slate-500"}`}>
-                              {evalRow.prize_name}
-                            </span>
-                            {evalRow.calibration_accuracy_pct && (
-                              <span className="text-[10px] text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-1.5 py-0.5 rounded" title={`Sai số Brier Loss: ${evalRow.brier_loss}`}>
-                                Khớp XS: {evalRow.calibration_accuracy_pct}%
-                              </span>
-                            )}
-                          </div>
-                        ) : (
-                          <div className="flex items-center gap-2">
-                            <span className="text-[11px] text-slate-500 italic">
-                              Chờ mở thưởng đối soát
-                            </span>
-                            {audit && !isAuditOpen && (
-                              <button
-                                type="button"
-                                onClick={() => toggleRowAudit(ticket.id, rIdx)}
-                                className="text-[10px] font-medium text-slate-400 hover:text-amber-400 flex items-center gap-0.5 underline underline-offset-2 transition-colors"
-                              >
-                                <span>Xem lý do</span>
-                                <ChevronDown className="w-2.5 h-2.5" />
-                              </button>
-                            )}
-                          </div>
-                        )}
-                      </div>
-
-                      {/* Expandable Audit Pros & Cons Box + Prize Tier Spectrum */}
-                      {audit && isAuditOpen && (
-                        <div className="border-t border-slate-800/80 bg-slate-900/90 p-4 space-y-4 animate-fadeIn">
-                          <div className="flex items-center justify-between border-b border-slate-800/60 pb-2">
-                            <div className="flex items-center gap-2">
-                              <Lightbulb className="w-4 h-4 text-amber-400" />
-                              <span className="text-xs font-bold text-white uppercase tracking-wider">
-                                Thẩm Định Xác Suất Dãy {String.fromCharCode(65 + rIdx)}: {audit.verdict_label}
-                              </span>
-                            </div>
-                            <span className="text-xs font-mono font-bold text-amber-400 bg-amber-500/10 border border-amber-500/20 px-2 py-0.5 rounded">
-                              Điểm thẩm định: {audit.score} / 100
-                            </span>
-                          </div>
-
-                          {/* Prize Probability Spectrum Grid */}
-                          {rowForecast.prize_probabilities && (
-                            <div className="p-3 rounded-xl bg-slate-950/70 border border-slate-800/80 space-y-2">
-                              <div className="flex items-center justify-between text-xs border-b border-slate-800/50 pb-1.5">
-                                <span className="font-bold text-amber-300 flex items-center gap-1.5">
-                                  <Trophy className="w-3.5 h-3.5 text-amber-400" />
-                                  Phổ Xác Suất Trúng Giải Theo Thuật Toán (Hypergeometric Posterior)
-                                </span>
-                                <span className="text-[11px] text-slate-400">
-                                  Ưu thế chu kỳ: <b className="text-emerald-400">{rowForecast.prize_probabilities.edge_delta_pct || "+0%"}</b>
-                                </span>
-                              </div>
-                              <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-5 gap-2 text-center text-xs">
-                                {rowForecast.prize_probabilities.tiers?.map((tier: any, tIdx: number) => (
-                                  <div
-                                    key={tIdx}
-                                    className="p-2 rounded-lg bg-slate-900/80 border border-slate-800 flex flex-col items-center justify-center gap-0.5"
-                                  >
-                                    <span className="text-[10px] text-slate-400 font-medium">{tier.name}</span>
-                                    <span className="text-xs font-bold font-mono text-white">{tier.adjusted_ratio}</span>
-                                    <span className="text-[9px] text-emerald-400 font-mono">({tier.edge_pct})</span>
-                                    <span className="text-[9px] text-slate-500">{tier.match_label}</span>
-                                  </div>
-                                ))}
-                                {rowForecast.prize_probabilities.any_prize && (
-                                  <div className="p-2 rounded-lg bg-emerald-950/30 border border-emerald-800/40 flex flex-col items-center justify-center gap-0.5">
-                                    <span className="text-[10px] text-emerald-400 font-bold">Có Giải Bất Kỳ</span>
-                                    <span className="text-xs font-black font-mono text-emerald-300">{rowForecast.prize_probabilities.any_prize.adjusted_ratio}</span>
-                                    <span className="text-[9px] text-emerald-400">~{rowForecast.prize_probabilities.any_prize.percentage_display}</span>
-                                    <span className="text-[9px] text-slate-500">Trùng ≥ 3 số</span>
-                                  </div>
-                                )}
-                              </div>
-                            </div>
-                          )}
-
-                          {/* Evaluation & Feedback Learning Metrics (if already evaluated) */}
-                          {evalRow && (
-                            <div className="p-3 rounded-xl bg-slate-950/70 border border-slate-800/80 space-y-1.5 text-xs">
-                              <div className="flex items-center justify-between text-amber-300 font-semibold border-b border-slate-800/50 pb-1">
-                                <span className="flex items-center gap-1.5">
-                                  <TrendingUp className="w-3.5 h-3.5 text-amber-400" />
-                                  Phản Hồi Học Hỏi Xác Suất Thực Tế (Brier Score Calibration)
-                                </span>
-                                <span className="text-[11px] text-slate-400">
-                                  Độ Khớp Mô Hình: <b className="text-emerald-400">{evalRow.calibration_accuracy_pct || 88.0}%</b>
-                                </span>
-                              </div>
-                              <p className="text-[11px] text-slate-300 leading-relaxed">
-                                {evalRow.learning_note}
-                              </p>
-                            </div>
-                          )}
-
-                          {/* 2 Columns: Pros vs Cons */}
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
-                            {/* Pros: Why you SHOULD use this row */}
-                            <div className="p-3 rounded-xl bg-emerald-950/20 border border-emerald-800/40 space-y-2">
-                              <div className="flex items-center gap-1.5 text-xs font-bold text-emerald-400 border-b border-emerald-800/30 pb-1.5">
-                                <ThumbsUp className="w-3.5 h-3.5" />
-                                <span>Lý Do NÊN Dùng Dãy Này Kỳ Này (Ưu Thế)</span>
-                              </div>
-                              <ul className="space-y-1.5 text-[11px] text-slate-300">
-                                {audit.pros && audit.pros.length > 0 ? (
-                                  audit.pros.map((pro: string, pIdx: number) => (
-                                    <li key={pIdx} className="flex items-start gap-1.5 leading-relaxed">
-                                      <span className="text-emerald-400 font-bold shrink-0 mt-0.5">✓</span>
-                                      <span>{pro}</span>
-                                    </li>
-                                  ))
-                                ) : (
-                                  <li className="text-slate-500 italic">Không có ưu điểm xác suất nổi bật</li>
-                                )}
-                              </ul>
-                            </div>
-
-                            {/* Cons: Why you SHOULD BE CAREFUL */}
-                            <div className="p-3 rounded-xl bg-rose-950/20 border border-rose-800/40 space-y-2">
-                              <div className="flex items-center gap-1.5 text-xs font-bold text-rose-400 border-b border-rose-800/30 pb-1.5">
-                                <ThumbsDown className="w-3.5 h-3.5" />
-                                <span>Điểm Yếu / Rủi Ro Cần Cân Nhắc</span>
-                              </div>
-                              <ul className="space-y-1.5 text-[11px] text-slate-300">
-                                {audit.cons && audit.cons.length > 0 ? (
-                                  audit.cons.map((con: string, cIdx: number) => (
-                                    <li key={cIdx} className="flex items-start gap-1.5 leading-relaxed">
-                                      <span className="text-rose-400 font-bold shrink-0 mt-0.5">⚠</span>
-                                      <span>{con}</span>
-                                    </li>
-                                  ))
-                                ) : (
-                                  <li className="text-emerald-400/80 italic">Dãy số không ghi nhận bất thường xác suất lớn</li>
-                                )}
-                              </ul>
-                            </div>
-                          </div>
-
-                          {/* Tactical Advice */}
-                          {audit.tactical_advice && (
-                            <div className="p-3 rounded-xl bg-indigo-950/30 border border-indigo-800/40 flex items-start gap-2.5 text-xs text-indigo-200">
-                              <Compass className="w-4 h-4 text-indigo-400 shrink-0 mt-0.5" />
-                              <div className="space-y-0.5">
-                                <span className="font-bold text-indigo-300">Chiến Thuật Phân Bổ:</span>
-                                <p className="text-[11px] text-slate-300 leading-relaxed">
-                                  {audit.tactical_advice}
-                                </p>
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-
-              {/* Expanded Algorithm & Learning Details */}
-              {isExpanded && (
-                <div className="mt-4 p-5 rounded-2xl bg-slate-950/80 border border-slate-800 text-xs text-slate-300 space-y-3">
-                  <div className="flex items-center justify-between border-b border-slate-800/80 pb-2">
-                    <span className="font-bold text-amber-400 flex items-center gap-1.5 text-sm">
-                      <TrendingUp className="w-4 h-4" /> Đánh Giá Chi Tiết Hiệu Suất Thuật Toán {stratInfo.strategy_name || ticket.strategy}
-                    </span>
-                    <span className="text-[11px] text-slate-400">Mức rủi ro: <b className="text-white">{stratInfo.risk_level || "Ổn định"}</b></span>
-                  </div>
-
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
-                    <div className="space-y-1.5">
-                      <p className="text-slate-400"><b>Nguyên lý hoạt động:</b> {stratInfo.description || "Phân phối chu kỳ xác suất theo dữ liệu lịch sử."}</p>
-                      <p className="text-slate-400"><b>Ưu thế thuật toán:</b> {stratInfo.advantage || "Tối ưu hóa độ bao phủ và cân đối chẵn lẻ."}</p>
-                    </div>
-
-                    <div className="space-y-1.5 bg-slate-900/60 p-3 rounded-xl border border-slate-800/60">
-                      <div className="flex justify-between">
-                        <span className="text-slate-400">Độ phủ con số độc nhất:</span>
-                        <b className="text-white">{analysis.unique_numbers_count} số ({analysis.coverage_pct}%)</b>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-slate-400">Tỷ lệ Chẵn / Lẻ:</span>
-                        <b className="text-white">{analysis.parity_ratio}</b>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-slate-400">Điểm đánh giá thuật toán:</span>
-                        <b className="text-amber-400">{stratInfo.algorithm_score || 85.0} / 100</b>
-                      </div>
-                    </div>
-                  </div>
-
-                  {matchResult?.learning_feedback && (
-                    <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-300 text-xs">
-                      <b>Nhật ký học hỏi sau đối soát:</b> {matchResult.learning_feedback}
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-          );
-        })}
+                </button>
+              );
+            })}
+          </div>
+        </div>
       </div>
+
+      {/* TICKETS RENDER: GROUPED BY DATE vs FLAT LIST */}
+      {viewMode === "grouped" ? (
+        <div className="space-y-6">
+          {dateGroups
+            .filter(([_, group]) => selectedDateFilter === "all" || group.period === selectedDateFilter)
+            .map(([key, group]) => {
+              const isCollapsed = !!collapsedDates[group.period];
+              return (
+                <div
+                  key={key}
+                  className="border border-slate-800 rounded-3xl bg-slate-900/70 overflow-hidden shadow-xl transition-all"
+                >
+                  {/* Date Group Accordion Header */}
+                  <div
+                    onClick={() => toggleDateCollapse(group.period)}
+                    className="p-4 sm:p-5 bg-gradient-to-r from-slate-850 to-slate-900/90 border-b border-slate-800 flex flex-wrap items-center justify-between gap-3 cursor-pointer hover:bg-slate-800/80 transition-all select-none"
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-2xl bg-amber-500/15 border border-amber-500/30 text-amber-400 flex items-center justify-center shrink-0">
+                        <Calendar className="w-5 h-5" />
+                      </div>
+                      <div>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="text-base font-black text-white">
+                            KỲ MỞ THƯỞNG #{group.period}
+                          </span>
+                          <span className="text-xs text-slate-300 font-semibold px-2 py-0.5 rounded-md bg-slate-800 border border-slate-700">
+                            Ngày {formatDate(group.date)}
+                          </span>
+                        </div>
+                        <div className="text-xs text-slate-400 flex flex-wrap items-center gap-2 pt-1">
+                          <span>{group.tickets.length} vé</span>
+                          <span>•</span>
+                          <span>{group.totalRows} dãy số</span>
+                          <span>•</span>
+                          <span className="text-emerald-400 font-medium">Đã đối soát kết quả</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-3">
+                      {group.winningTicketsCount > 0 ? (
+                        <span className="px-3 py-1.5 rounded-xl bg-gradient-to-r from-amber-500/20 to-yellow-400/20 border border-amber-500/40 text-amber-300 font-black text-xs flex items-center gap-1.5 shadow-md">
+                          <Trophy className="w-4 h-4 text-amber-400" />
+                          Trúng {group.winningTicketsCount} vé ({formatVND(group.totalPrize)})
+                        </span>
+                      ) : (
+                        <span className="px-2.5 py-1 rounded-lg bg-slate-800 text-slate-400 text-xs border border-slate-700">
+                          Chưa có giải kỳ này
+                        </span>
+                      )}
+
+                      <button
+                        className="p-2 rounded-xl text-slate-400 hover:text-white bg-slate-800/80 border border-slate-700 hover:bg-slate-700"
+                        title={isCollapsed ? "Mở rộng kỳ này" : "Thu gọn kỳ này"}
+                      >
+                        {isCollapsed ? <ChevronDown className="w-4 h-4" /> : <ChevronUp className="w-4 h-4" />}
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Group Tickets Body */}
+                  {!isCollapsed && (
+                    <div className="p-4 sm:p-6 space-y-4 bg-slate-950/40">
+                      {group.tickets.map((ticket) => renderTicketCard(ticket))}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+        </div>
+      ) : (
+        /* Flat View */
+        <div className="space-y-4">
+          {filteredTickets
+            .filter((t) => selectedDateFilter === "all" || t.target_draw_period === selectedDateFilter)
+            .map((ticket) => renderTicketCard(ticket))}
+        </div>
+      )}
     </div>
   );
 };

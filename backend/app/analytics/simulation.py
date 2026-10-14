@@ -95,11 +95,19 @@ async def run_walk_forward_simulation(
 
         max_num = game.max_number
 
-        # Fetch all draws ordered by id ascending
         all_draws_res = await db.execute(
             select(DrawResult).where(DrawResult.game_id == game.id).order_by(DrawResult.id.asc())
         )
         all_draws = all_draws_res.scalars().all()
+        if len(all_draws) < 15:
+            from app.crawler.manager import CrawlerManager
+            manager = CrawlerManager(db)
+            await manager.seed_historical_data(game_code, limit=50)
+            all_draws_res = await db.execute(
+                select(DrawResult).where(DrawResult.game_id == game.id).order_by(DrawResult.id.asc())
+            )
+            all_draws = all_draws_res.scalars().all()
+
         if len(all_draws) < 15:
             continue
 
