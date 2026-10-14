@@ -240,6 +240,9 @@ export const SmartPickGenerator: React.FC<SmartPickProps> = ({ gameCode, onRunBa
   const handleGenerateAll = async () => {
     setLoading(true);
     const fetchStrat = strategy === "custom_manual" ? "balanced" : strategy;
+    if (strategy === "custom_manual") {
+      setStrategy("balanced");
+    }
     try {
       const res = await fetch(`${API_BASE_URL}/api/v1/generator/smart-pick`, {
         method: "POST",
@@ -299,9 +302,17 @@ export const SmartPickGenerator: React.FC<SmartPickProps> = ({ gameCode, onRunBa
     const validRowStrategies = validRowsData.map((d) => d.strategy);
     const validSpecialNumbers = validRowsData.map((d) => d.special_number);
 
-    // Determine effective ticket strategy: if strategy is custom_manual or any row is custom_manual
-    const isAnyCustom = validRowStrategies.some((s) => s === "custom_manual");
-    const effectiveStrategy = strategy === "custom_manual" || isAnyCustom ? "custom_manual" : strategy;
+    // Determine effective ticket strategy:
+    // - If all rows are custom_manual -> "custom_manual" (Vé Điền Tay)
+    // - If all rows share 1 algorithm -> that algorithm (e.g. "balanced")
+    // - If rows have mixed algorithms / manual -> "mixed" (Vé Hỗn Hợp)
+    const distinctStrats = Array.from(new Set(validRowStrategies.filter(Boolean)));
+    let effectiveStrategy: string = strategy;
+    if (distinctStrats.length === 1) {
+      effectiveStrategy = distinctStrats[0] as string;
+    } else if (distinctStrats.length > 1) {
+      effectiveStrategy = "mixed";
+    }
 
     setSaving(true);
     try {
@@ -367,9 +378,9 @@ export const SmartPickGenerator: React.FC<SmartPickProps> = ({ gameCode, onRunBa
           <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider bg-amber-500/10 text-amber-400 border border-amber-500/20 mb-2">
             <Sparkles className="w-3.5 h-3.5" /> Bộ 1 Vé - {gameCode === "power_6_55" ? "Power 6/55 (01-55)" : "Mega 6/45 (01-45)"}
           </div>
-          <h3 className="text-2xl font-bold text-white">Tự Chọn Dãy Số Vé & Theo Dõi Học Hỏi</h3>
+          <h3 className="text-2xl font-bold text-white">Soạn Vé & Tùy Chọn Thuật Toán Từng Dãy</h3>
           <p className="text-sm text-slate-400">
-            Tự điền số lượng dãy trên 1 vé (mặc định 5 dãy A..E), tự nhập các con số, lưu lại để hệ thống phân tích & theo dõi đối soát kỳ tiếp theo.
+            Tự do điền tay hoặc chọn thuật toán tự động cho từng dãy số, lưu lại để hệ thống phân tích xác suất & đối soát tự động khi có kết quả.
           </p>
         </div>
 
@@ -420,7 +431,7 @@ export const SmartPickGenerator: React.FC<SmartPickProps> = ({ gameCode, onRunBa
               }}
               className="bg-slate-800 border border-slate-700 text-slate-200 text-xs md:text-sm rounded-xl px-3 py-2 font-semibold focus:outline-none focus:ring-2 focus:ring-amber-500 cursor-pointer"
             >
-              <option value="custom_manual">✍️ Tự Chọn Thủ Công (Custom Pick)</option>
+              <option value="custom_manual">✍️ Tự Điền Thủ Công (Điền Tay)</option>
               <option value="balanced">⚡ Thuật toán: Cân Bằng (Balanced)</option>
               <option value="mean_reversion">📈 Thuật toán: Hồi Quy (Mean Reversion)</option>
               <option value="pure_random">🎲 Thuật toán: Ngẫu Nhiên (Pure Random)</option>
@@ -528,12 +539,12 @@ export const SmartPickGenerator: React.FC<SmartPickProps> = ({ gameCode, onRunBa
                               ? "bg-amber-500/10 text-amber-400 border-amber-500/30"
                               : "bg-purple-500/10 text-purple-400 border-purple-500/30"
                           }`}
-                          title="Thuật toán được áp dụng cho dãy số này"
+                          title="Phương thức / Thuật toán áp dụng cho dãy số này"
                         >
+                          <option value="custom_manual">✍️ Điền Tay</option>
                           <option value="balanced">⚡ Cân Bằng</option>
-                          <option value="mean_reversion">📈 Hồi Quy (Số Trễ)</option>
+                          <option value="mean_reversion">📈 Hồi Quy</option>
                           <option value="pure_random">🎲 Ngẫu Nhiên</option>
-                          <option value="custom_manual">✍️ Tự Chọn</option>
                         </select>
                       </div>
                       <p className="text-[11px] text-slate-400">

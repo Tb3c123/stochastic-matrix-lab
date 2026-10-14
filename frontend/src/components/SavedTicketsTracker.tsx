@@ -103,41 +103,124 @@ export const SavedTicketsTracker: React.FC<SavedTicketsTrackerProps> = ({ gameCo
 
   const getStrategyBadge = (stratCode: string) => {
     switch (stratCode) {
+      case "mixed":
+        return {
+          label: "Vé Hỗn Hợp (Điền Tay & Thuật Toán)",
+          shortLabel: "Hỗn Hợp",
+          bg: "bg-fuchsia-500/10 text-fuchsia-400 border-fuchsia-500/30",
+          dot: "bg-fuchsia-400"
+        };
       case "balanced":
         return {
-          label: "Cân Bằng (Balanced)",
-          bg: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20",
+          label: "Thuật Toán Cân Bằng (Balanced)",
+          shortLabel: "Cân Bằng",
+          bg: "bg-emerald-500/10 text-emerald-400 border-emerald-500/30",
           dot: "bg-emerald-400"
         };
       case "mean_reversion":
         return {
-          label: "Hồi Quy (Mean Reversion)",
-          bg: "bg-sky-500/10 text-sky-400 border-sky-500/20",
+          label: "Thuật Toán Hồi Quy (Mean Reversion)",
+          shortLabel: "Hồi Quy",
+          bg: "bg-sky-500/10 text-sky-400 border-sky-500/30",
           dot: "bg-sky-400"
         };
       case "pure_random":
         return {
-          label: "Ngẫu Nhiên (Pure Random)",
-          bg: "bg-amber-500/10 text-amber-400 border-amber-500/20",
+          label: "Thuật Toán Ngẫu Nhiên (Pure Random)",
+          shortLabel: "Ngẫu Nhiên",
+          bg: "bg-amber-500/10 text-amber-400 border-amber-500/30",
           dot: "bg-amber-400"
         };
       case "custom_manual":
+      case "custom":
         return {
-          label: "Tự Chọn (Custom)",
-          bg: "bg-purple-500/10 text-purple-400 border-purple-500/20",
+          label: "Tự Điền Thủ Công (Điền Tay)",
+          shortLabel: "Điền Tay",
+          bg: "bg-purple-500/10 text-purple-400 border-purple-500/30",
           dot: "bg-purple-400"
+        };
+      case "hybrid_ai_learned":
+        return {
+          label: "AI Hybrid Đa Tầng (Adaptive)",
+          shortLabel: "AI Hybrid",
+          bg: "bg-indigo-500/10 text-indigo-400 border-indigo-500/30",
+          dot: "bg-indigo-400"
         };
       default:
         return {
           label: stratCode || "Thuật Toán Chu Kỳ",
+          shortLabel: stratCode || "Khác",
           bg: "bg-slate-700/30 text-slate-300 border-slate-700",
           dot: "bg-slate-400"
         };
     }
   };
 
+  const getRowAlgorithmBadge = (rowForecast: any, ticketStrategy: string, rowIndex: number) => {
+    const code = rowForecast?.algorithm_code || (
+      ticketStrategy === "hybrid_ai_learned"
+        ? (rowIndex < 2 ? "hybrid_exploitation_bayes" : rowIndex === 2 ? "hybrid_mean_reversion" : "hybrid_exploration_bandit")
+        : ticketStrategy
+    );
+
+    switch (code) {
+      case "custom_manual":
+      case "custom":
+        return {
+          label: "✍️ Điền Tay",
+          fullName: "Dãy số do bạn tự điền tay theo trực giác",
+          cls: "bg-purple-500/10 text-purple-400 border-purple-500/30"
+        };
+      case "balanced":
+        return {
+          label: "⚡ Cân Bằng",
+          fullName: "Thuật toán Cân Bằng Chu Kỳ (Gauss & Chẵn Lẻ)",
+          cls: "bg-emerald-500/10 text-emerald-400 border-emerald-500/30"
+        };
+      case "mean_reversion":
+        return {
+          label: "📈 Hồi Quy",
+          fullName: "Thuật toán Hồi Quy Chu Kỳ Số Trễ",
+          cls: "bg-sky-500/10 text-sky-400 border-sky-500/30"
+        };
+      case "pure_random":
+        return {
+          label: "🎲 Ngẫu Nhiên",
+          fullName: "Thuật toán Ngẫu Nhiên Độc Lập",
+          cls: "bg-amber-500/10 text-amber-400 border-amber-500/30"
+        };
+      case "hybrid_exploitation_bayes":
+        return {
+          label: "🤖 AI Khai Thác",
+          fullName: "AI Khai Thác (Bayes + Gauss)",
+          cls: "bg-indigo-500/10 text-indigo-400 border-indigo-500/30"
+        };
+      case "hybrid_mean_reversion":
+        return {
+          label: "🤖 AI Hồi Quy",
+          fullName: "AI Hồi Quy Chu Kỳ Trễ",
+          cls: "bg-sky-500/10 text-sky-400 border-sky-500/30"
+        };
+      case "hybrid_exploration_bandit":
+        return {
+          label: "🤖 AI Thăm Dò",
+          fullName: "AI Thăm Dò (Bandit Agent)",
+          cls: "bg-violet-500/10 text-violet-400 border-violet-500/30"
+        };
+      default:
+        return {
+          label: "⚡ Cân Bằng",
+          fullName: "Thuật toán Chu Kỳ",
+          cls: "bg-slate-700/30 text-slate-300 border-slate-700"
+        };
+    }
+  };
+
   const isTicketMatchingAlgo = (t: any, algo: string) => {
     if (algo === "all") return true;
+    if (algo === "mixed") {
+      return t.strategy === "mixed";
+    }
     if (algo === "custom_manual") {
       if (t.strategy === "custom_manual" || t.strategy === "custom") return true;
       const rowForecasts = t.predicted_analysis?.row_forecasts || [];
@@ -161,6 +244,7 @@ export const SavedTicketsTracker: React.FC<SavedTicketsTrackerProps> = ({ gameCo
   const countMean = tickets.filter((t) => isTicketMatchingAlgo(t, "mean_reversion")).length;
   const countRandom = tickets.filter((t) => isTicketMatchingAlgo(t, "pure_random")).length;
   const countCustom = tickets.filter((t) => isTicketMatchingAlgo(t, "custom_manual")).length;
+  const countMixed = tickets.filter((t) => isTicketMatchingAlgo(t, "mixed")).length;
 
   const filteredTickets = tickets.filter((t) => isTicketMatchingAlgo(t, selectedAlgoFilter));
 
@@ -319,7 +403,17 @@ export const SavedTicketsTracker: React.FC<SavedTicketsTrackerProps> = ({ gameCo
               : "bg-slate-800/80 text-slate-400 hover:text-white border border-slate-700"
           }`}
         >
-          Tự Chọn ({countCustom})
+          Điền Tay ({countCustom})
+        </button>
+        <button
+          onClick={() => setSelectedAlgoFilter("mixed")}
+          className={`px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+            selectedAlgoFilter === "mixed"
+              ? "bg-fuchsia-600 text-white shadow-md"
+              : "bg-slate-800/80 text-slate-400 hover:text-white border border-slate-700"
+          }`}
+        >
+          Hỗn Hợp ({countMixed})
         </button>
       </div>
 
@@ -359,9 +453,9 @@ export const SavedTicketsTracker: React.FC<SavedTicketsTrackerProps> = ({ gameCo
                     {isPending ? `Chờ Kỳ Xổ #${ticket.target_draw_period}` : `Đã Đối Soát Kỳ #${ticket.target_draw_period}`}
                   </span>
 
-                  {/* Algorithm Tag */}
+                  {/* Strategy Badge */}
                   <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold border ${stratBadge.bg}`}>
-                    <Dna className="w-3.5 h-3.5" /> Thuật toán: {stratBadge.label}
+                    <Dna className="w-3.5 h-3.5" /> {stratBadge.label}
                   </span>
 
                   <div className="text-xs text-slate-400 flex items-center gap-2">
@@ -424,38 +518,19 @@ export const SavedTicketsTracker: React.FC<SavedTicketsTrackerProps> = ({ gameCo
                           </span>
 
                           {/* Specific Algorithm used for this row */}
-                          <div className="flex items-center gap-1.5">
-                            <span
-                              className={`text-[10px] font-bold px-2 py-0.5 rounded-full border shrink-0 ${
-                                (rowForecast.algorithm_code || ticket.strategy) === "hybrid_exploitation_bayes"
-                                  ? "bg-indigo-500/10 text-indigo-400 border-indigo-500/30"
-                                  : (rowForecast.algorithm_code || ticket.strategy) === "hybrid_mean_reversion"
-                                  ? "bg-sky-500/10 text-sky-400 border-sky-500/30"
-                                  : (rowForecast.algorithm_code || ticket.strategy) === "hybrid_exploration_bandit"
-                                  ? "bg-violet-500/10 text-violet-400 border-violet-500/30"
-                                  : (rowForecast.algorithm_code || ticket.strategy) === "balanced"
-                                  ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/30"
-                                  : (rowForecast.algorithm_code || ticket.strategy) === "mean_reversion"
-                                  ? "bg-sky-500/10 text-sky-400 border-sky-500/30"
-                                  : (rowForecast.algorithm_code || ticket.strategy) === "pure_random"
-                                  ? "bg-amber-500/10 text-amber-400 border-amber-500/30"
-                                  : "bg-purple-500/10 text-purple-400 border-purple-500/30"
-                              }`}
-                              title={`Thuật toán: ${rowForecast.algorithm_name || ticket.strategy}`}
-                            >
-                              {rowForecast.algorithm_name || (
-                                ticket.strategy === "balanced"
-                                  ? "Cân Bằng"
-                                  : ticket.strategy === "mean_reversion"
-                                  ? "Hồi Quy (Số Trễ)"
-                                  : ticket.strategy === "pure_random"
-                                  ? "Ngẫu Nhiên"
-                                  : ticket.strategy === "hybrid_ai_learned"
-                                  ? (rIdx < 2 ? "AI Khai Thác" : rIdx === 2 ? "AI Hồi Quy" : "AI Thăm Dò")
-                                  : "Tự Chọn"
-                              )}
-                            </span>
-                          </div>
+                          {(() => {
+                            const rowBadge = getRowAlgorithmBadge(rowForecast, ticket.strategy, rIdx);
+                            return (
+                              <div className="flex items-center gap-1.5">
+                                <span
+                                  className={`text-[10px] font-bold px-2 py-0.5 rounded-full border shrink-0 ${rowBadge.cls}`}
+                                  title={rowBadge.fullName}
+                                >
+                                  {rowBadge.label}
+                                </span>
+                              </div>
+                            );
+                          })()}
 
                           <div className="flex flex-wrap items-center gap-2">
                             {row.map((num) => {

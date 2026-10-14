@@ -65,3 +65,29 @@ async def test_evaluate_tickets():
         eval_res = await client.post("/api/v1/tickets/evaluate", json={"game_code": "mega_6_45"})
         assert eval_res.status_code == 200
         assert eval_res.json()["success"] is True
+
+@pytest.mark.asyncio
+async def test_save_mixed_ticket():
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        # Save a ticket with mixed strategies (1 manual row, 1 balanced row)
+        payload = {
+            "game_code": "mega_6_45",
+            "strategy": "custom_manual",
+            "rows": [
+                [1, 2, 3, 4, 5, 6],
+                [10, 15, 20, 25, 30, 35]
+            ],
+            "row_strategies": ["custom_manual", "balanced"]
+        }
+        res = await client.post("/api/v1/tickets/save", json=payload)
+        assert res.status_code == 200
+        json_data = res.json()
+        assert json_data["success"] is True
+        data = json_data["data"]
+        # Must be classified as mixed because it contains both custom_manual and balanced!
+        assert data["strategy"] == "mixed"
+        assert data["predicted_analysis"]["strategy_info"]["strategy_code"] == "mixed"
+        assert data["predicted_analysis"]["row_forecasts"][0]["algorithm_code"] == "custom_manual"
+        assert data["predicted_analysis"]["row_forecasts"][1]["algorithm_code"] == "balanced"
+

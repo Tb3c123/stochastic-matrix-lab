@@ -48,7 +48,7 @@ STRATEGY_METRICS = {
         "base_score": 55.0
     },
     "custom_manual": {
-        "name": "Tự Chọn Thủ Công (Custom Pick)",
+        "name": "Tự Điền Thủ Công (Manual Pick)",
         "category": "Dãy Số Cá Nhân",
         "description": "Bộ số do người chơi tự điền theo trực giác, ngày kỷ niệm hoặc quy luật cá nhân.",
         "historical_accuracy_pct": 58.0,
@@ -56,6 +56,16 @@ STRATEGY_METRICS = {
         "advantage": "Phù hợp trực giác và chiến thuật cá nhân hóa của người chơi.",
         "risk_level": "Tùy biến",
         "base_score": 60.0
+    },
+    "mixed": {
+        "name": "Vé Hỗn Hợp (Điền Tay & Thuật Toán)",
+        "category": "Kết Hợp Đa Chiến Lược",
+        "description": "Kết hợp linh hoạt giữa các dãy tự điền theo trực giác và các dãy số do thuật toán tối ưu.",
+        "historical_accuracy_pct": 78.0,
+        "confidence_rating": "A",
+        "advantage": "Hài hòa giữa trực giác người chơi và phân bổ xác suất toán học.",
+        "risk_level": "Trung bình",
+        "base_score": 80.0
     },
     "hybrid_ai_learned": {
         "name": "AI Hybrid Đa Tầng (Reinforcement & Bayes)",
@@ -199,12 +209,23 @@ def analyze_ticket_probability(
     # Coverage score: unique numbers picked out of max numbers
     coverage_pct = round((len(unique_numbers) / max_num) * 100, 1)
 
+    # Determine effective ticket strategy
+    effective_strategy = strategy
+    if row_strategies and len(row_strategies) > 0:
+        clean_strats = [s for s in row_strategies if s]
+        if clean_strats:
+            distinct_strats = list(set(clean_strats))
+            if len(distinct_strats) > 1:
+                effective_strategy = "mixed"
+            elif len(distinct_strats) == 1:
+                effective_strategy = distinct_strats[0]
+
     # Strategy evaluation
-    meta = STRATEGY_METRICS.get(strategy, STRATEGY_METRICS["balanced"])
+    meta = STRATEGY_METRICS.get(effective_strategy, STRATEGY_METRICS["balanced"])
     computed_score = min(98.0, round(meta["base_score"] + (coverage_pct * 0.15) + min(10.0, valid_rows_count * 1.5), 1))
 
     strategy_eval = {
-        "strategy_code": strategy,
+        "strategy_code": effective_strategy,
         "strategy_name": meta["name"],
         "category": meta["category"],
         "description": meta["description"],
@@ -274,6 +295,15 @@ async def save_ticket(
         target_date = compute_next_draw_date(payload.game_code, base_dt)
 
     strategy_code = payload.strategy or "balanced"
+    if payload.row_strategies and len(payload.row_strategies) > 0:
+        clean_strats = [s for s in payload.row_strategies if s]
+        if clean_strats:
+            distinct_strats = list(set(clean_strats))
+            if len(distinct_strats) > 1:
+                strategy_code = "mixed"
+            elif len(distinct_strats) == 1:
+                strategy_code = distinct_strats[0]
+
     # Perform probability & strategy accuracy evaluation
     analysis = analyze_ticket_probability(
         payload.game_code,
