@@ -11,6 +11,7 @@ from app.models.draw import DrawResult
 from app.models.ticket import SavedTicket
 from app.schemas.common import ResponseEnvelope, ErrorDetail
 from app.schemas.ticket import SaveTicketRequest, EvaluateTicketsRequest
+from app.analytics.audit import audit_single_row_recommendation
 
 router = APIRouter(prefix="/tickets", tags=["Tickets & Learning"])
 
@@ -126,6 +127,8 @@ def compute_single_row_jackpot_forecast(
     jackpot_display_str = f"{base_ratio_str} ({cycle_pct_str})"
     forecast_score = min(98.0, round(75.0 + (cycle_multiplier - 1.0) * 50, 1))
 
+    audit_result = audit_single_row_recommendation(game_code, sorted_nums, special_number)
+
     res_data = {
         "numbers": sorted_nums,
         "sum_val": sum_val,
@@ -134,7 +137,8 @@ def compute_single_row_jackpot_forecast(
         "cycle_multiplier": cycle_multiplier,
         "cycle_pct_str": cycle_pct_str,
         "jackpot_probability_display": jackpot_display_str,
-        "forecast_score": forecast_score
+        "forecast_score": forecast_score,
+        "audit": audit_result
     }
     if special_number is not None:
         res_data["special_number"] = special_number
@@ -313,6 +317,17 @@ async def list_tickets(
 
     data = []
     for t in tickets:
+        pred_analysis = dict(t.predicted_analysis or {})
+        row_fcs = list(pred_analysis.get("row_forecasts", []))
+        updated_fcs = []
+        for r_idx, row in enumerate(t.rows_data):
+            fc = dict(row_fcs[r_idx]) if r_idx < len(row_fcs) else {}
+            if "audit" not in fc:
+                sp = fc.get("special_number")
+                fc["audit"] = audit_single_row_recommendation(t.game_code, row, sp)
+            updated_fcs.append(fc)
+        pred_analysis["row_forecasts"] = updated_fcs
+
         data.append({
             "id": t.id,
             "game_code": t.game_code,
@@ -321,7 +336,7 @@ async def list_tickets(
             "target_draw_date": t.target_draw_date,
             "rows": t.rows_data,
             "rows_count": len(t.rows_data),
-            "predicted_analysis": t.predicted_analysis,
+            "predicted_analysis": pred_analysis,
             "status": t.status,
             "matched_results": t.matched_results,
             "created_at": t.created_at.isoformat()

@@ -16,7 +16,12 @@ import {
   ShieldCheck,
   Zap,
   HelpCircle,
-  BarChart3
+  BarChart3,
+  ThumbsUp,
+  ThumbsDown,
+  AlertTriangle,
+  Lightbulb,
+  Compass
 } from "lucide-react";
 import { AlgorithmComparisonChart } from "@/components/AlgorithmComparisonChart";
 
@@ -32,7 +37,13 @@ export const SavedTicketsTracker: React.FC<SavedTicketsTrackerProps> = ({ gameCo
   const [loading, setLoading] = useState<boolean>(false);
   const [evaluating, setEvaluating] = useState<boolean>(false);
   const [expandedId, setExpandedId] = useState<number | null>(null);
+  const [openRowAudits, setOpenRowAudits] = useState<Record<string, boolean>>({});
   const [evaluateNotice, setEvaluateNotice] = useState<string | null>(null);
+
+  const toggleRowAudit = (ticketId: number, rowIdx: number) => {
+    const key = `${ticketId}-${rowIdx}`;
+    setOpenRowAudits((prev) => ({ ...prev, [key]: !prev[key] }));
+  };
 
   const fetchTicketsAndPerformance = async () => {
     setLoading(true);
@@ -358,108 +369,231 @@ export const SavedTicketsTracker: React.FC<SavedTicketsTrackerProps> = ({ gameCo
               </div>
 
               {/* Rows Display */}
-              <div className="mt-4 pt-4 border-t border-slate-800 space-y-2.5">
+              <div className="mt-4 pt-4 border-t border-slate-800 space-y-3">
                 {ticket.rows.map((row: number[], rIdx: number) => {
                   const evalRow = matchResult?.rows_evaluation?.[rIdx];
                   const matchedNums: number[] = evalRow?.matched_numbers || [];
                   const rowForecast = analysis?.row_forecasts?.[rIdx] || {};
+                  const audit = rowForecast?.audit;
+                  const rowKey = `${ticket.id}-${rIdx}`;
+                  const isAuditOpen = !!openRowAudits[rowKey];
 
                   return (
                     <div
                       key={rIdx}
-                      className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-850/50 p-3 rounded-xl border border-slate-800/60"
+                      className="bg-slate-850/50 rounded-xl border border-slate-800/60 transition-all overflow-hidden"
                     >
-                      <div className="flex flex-wrap items-center gap-3">
-                        <span className="w-7 h-7 rounded-lg bg-slate-800 text-slate-400 text-xs font-bold flex items-center justify-center shrink-0">
-                          {String.fromCharCode(65 + rIdx)}
-                        </span>
-
-                        {/* Specific Algorithm used for this row */}
-                        <div className="flex items-center gap-1.5">
-                          <span
-                            className={`text-[10px] font-bold px-2 py-0.5 rounded-full border shrink-0 ${
-                              (rowForecast.algorithm_code || ticket.strategy) === "hybrid_exploitation_bayes"
-                                ? "bg-indigo-500/10 text-indigo-400 border-indigo-500/30"
-                                : (rowForecast.algorithm_code || ticket.strategy) === "hybrid_mean_reversion"
-                                ? "bg-sky-500/10 text-sky-400 border-sky-500/30"
-                                : (rowForecast.algorithm_code || ticket.strategy) === "hybrid_exploration_bandit"
-                                ? "bg-violet-500/10 text-violet-400 border-violet-500/30"
-                                : (rowForecast.algorithm_code || ticket.strategy) === "balanced"
-                                ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/30"
-                                : (rowForecast.algorithm_code || ticket.strategy) === "mean_reversion"
-                                ? "bg-sky-500/10 text-sky-400 border-sky-500/30"
-                                : (rowForecast.algorithm_code || ticket.strategy) === "pure_random"
-                                ? "bg-amber-500/10 text-amber-400 border-amber-500/30"
-                                : "bg-purple-500/10 text-purple-400 border-purple-500/30"
-                            }`}
-                            title={`Thuật toán: ${rowForecast.algorithm_name || ticket.strategy}`}
-                          >
-                            {rowForecast.algorithm_name || (
-                              ticket.strategy === "balanced"
-                                ? "Cân Bằng"
-                                : ticket.strategy === "mean_reversion"
-                                ? "Hồi Quy (Số Trễ)"
-                                : ticket.strategy === "pure_random"
-                                ? "Ngẫu Nhiên"
-                                : ticket.strategy === "hybrid_ai_learned"
-                                ? (rIdx < 2 ? "AI Khai Thác" : rIdx === 2 ? "AI Hồi Quy" : "AI Thăm Dò")
-                                : "Tự Chọn"
-                            )}
+                      {/* Main Row Bar */}
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3">
+                        <div className="flex flex-wrap items-center gap-3">
+                          <span className="w-7 h-7 rounded-lg bg-slate-800 text-slate-400 text-xs font-bold flex items-center justify-center shrink-0">
+                            {String.fromCharCode(65 + rIdx)}
                           </span>
-                        </div>
 
-                        <div className="flex flex-wrap items-center gap-2">
-                          {row.map((num) => {
-                            const isMatch = matchedNums.includes(num);
-                            return (
-                              <span
-                                key={num}
-                                className={`w-8 h-8 rounded-full text-xs font-bold flex items-center justify-center transition-all ${
-                                  isMatch
-                                    ? "bg-emerald-500 text-white ring-2 ring-emerald-300 shadow-lg scale-105"
-                                    : "ball-red text-white"
-                                }`}
-                              >
-                                {num < 10 ? `0${num}` : num}
-                              </span>
-                            );
-                          })}
+                          {/* Specific Algorithm used for this row */}
+                          <div className="flex items-center gap-1.5">
+                            <span
+                              className={`text-[10px] font-bold px-2 py-0.5 rounded-full border shrink-0 ${
+                                (rowForecast.algorithm_code || ticket.strategy) === "hybrid_exploitation_bayes"
+                                  ? "bg-indigo-500/10 text-indigo-400 border-indigo-500/30"
+                                  : (rowForecast.algorithm_code || ticket.strategy) === "hybrid_mean_reversion"
+                                  ? "bg-sky-500/10 text-sky-400 border-sky-500/30"
+                                  : (rowForecast.algorithm_code || ticket.strategy) === "hybrid_exploration_bandit"
+                                  ? "bg-violet-500/10 text-violet-400 border-violet-500/30"
+                                  : (rowForecast.algorithm_code || ticket.strategy) === "balanced"
+                                  ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/30"
+                                  : (rowForecast.algorithm_code || ticket.strategy) === "mean_reversion"
+                                  ? "bg-sky-500/10 text-sky-400 border-sky-500/30"
+                                  : (rowForecast.algorithm_code || ticket.strategy) === "pure_random"
+                                  ? "bg-amber-500/10 text-amber-400 border-amber-500/30"
+                                  : "bg-purple-500/10 text-purple-400 border-purple-500/30"
+                              }`}
+                              title={`Thuật toán: ${rowForecast.algorithm_name || ticket.strategy}`}
+                            >
+                              {rowForecast.algorithm_name || (
+                                ticket.strategy === "balanced"
+                                  ? "Cân Bằng"
+                                  : ticket.strategy === "mean_reversion"
+                                  ? "Hồi Quy (Số Trễ)"
+                                  : ticket.strategy === "pure_random"
+                                  ? "Ngẫu Nhiên"
+                                  : ticket.strategy === "hybrid_ai_learned"
+                                  ? (rIdx < 2 ? "AI Khai Thác" : rIdx === 2 ? "AI Hồi Quy" : "AI Thăm Dò")
+                                  : "Tự Chọn"
+                              )}
+                            </span>
+                          </div>
 
-                          {/* Special Number for Power 6/55 if present */}
-                          {rowForecast.special_number && (
-                            <>
-                              <span className="text-amber-500 font-bold text-xs">+</span>
-                              <span
-                                className="w-8 h-8 rounded-full text-xs font-black flex items-center justify-center ball-gold text-slate-950 ring-2 ring-amber-400 shadow-md"
-                                title="Số đặc biệt Jackpot 2"
-                              >
-                                {rowForecast.special_number < 10 ? `0${rowForecast.special_number}` : rowForecast.special_number}
-                              </span>
-                            </>
+                          <div className="flex flex-wrap items-center gap-2">
+                            {row.map((num) => {
+                              const isMatch = matchedNums.includes(num);
+                              return (
+                                <span
+                                  key={num}
+                                  className={`w-8 h-8 rounded-full text-xs font-bold flex items-center justify-center transition-all ${
+                                    isMatch
+                                      ? "bg-emerald-500 text-white ring-2 ring-emerald-300 shadow-lg scale-105"
+                                      : "ball-red text-white"
+                                  }`}
+                                >
+                                  {num < 10 ? `0${num}` : num}
+                                </span>
+                              );
+                            })}
+
+                            {/* Special Number for Power 6/55 if present */}
+                            {rowForecast.special_number && (
+                              <>
+                                <span className="text-amber-500 font-bold text-xs">+</span>
+                                <span
+                                  className="w-8 h-8 rounded-full text-xs font-black flex items-center justify-center ball-gold text-slate-950 ring-2 ring-amber-400 shadow-md"
+                                  title="Số đặc biệt Jackpot 2"
+                                >
+                                  {rowForecast.special_number < 10 ? `0${rowForecast.special_number}` : rowForecast.special_number}
+                                </span>
+                              </>
+                            )}
+                          </div>
+
+                          {/* Forecast Jackpot Probability saved for this row */}
+                          {rowForecast.jackpot_probability_display && (
+                            <div className="text-[11px] font-semibold text-amber-300 bg-amber-500/10 border border-amber-500/20 px-2 py-0.5 rounded-md flex items-center gap-1">
+                              <Trophy className="w-3 h-3 text-amber-400" />
+                              <span>Dự Báo: <b>{rowForecast.jackpot_probability_display}</b></span>
+                            </div>
+                          )}
+
+                          {/* Audit Verdict Badge */}
+                          {audit && (
+                            <button
+                              type="button"
+                              onClick={() => toggleRowAudit(ticket.id, rIdx)}
+                              className={`text-[11px] font-bold px-2.5 py-0.5 rounded-md border flex items-center gap-1.5 transition-all hover:brightness-125 cursor-pointer ${
+                                audit.verdict_code === "recommended"
+                                  ? "bg-emerald-500/15 text-emerald-400 border-emerald-500/30 hover:bg-emerald-500/25"
+                                  : audit.verdict_code === "consider"
+                                  ? "bg-amber-500/15 text-amber-400 border-amber-500/30 hover:bg-amber-500/25"
+                                  : "bg-rose-500/15 text-rose-400 border-rose-500/30 hover:bg-rose-500/25"
+                              }`}
+                              title="Bấm để xem phân tích lý do nên và không nên chọn dãy này"
+                            >
+                              {audit.verdict_code === "recommended" ? (
+                                <ThumbsUp className="w-3 h-3 text-emerald-400 shrink-0" />
+                              ) : audit.verdict_code === "consider" ? (
+                                <AlertTriangle className="w-3 h-3 text-amber-400 shrink-0" />
+                              ) : (
+                                <ThumbsDown className="w-3 h-3 text-rose-400 shrink-0" />
+                              )}
+                              <span>{audit.verdict_label}</span>
+                              <span className="font-mono text-[10px] opacity-80">({audit.score}đ)</span>
+                              {isAuditOpen ? (
+                                <ChevronUp className="w-3 h-3 opacity-70 ml-0.5" />
+                              ) : (
+                                <ChevronDown className="w-3 h-3 opacity-70 ml-0.5" />
+                              )}
+                            </button>
                           )}
                         </div>
 
-                        {/* Forecast Jackpot Probability saved for this row */}
-                        {rowForecast.jackpot_probability_display && (
-                          <div className="text-[11px] font-semibold text-amber-300 bg-amber-500/10 border border-amber-500/20 px-2 py-0.5 rounded-md flex items-center gap-1">
-                            <Trophy className="w-3 h-3 text-amber-400" />
-                            <span>Dự Báo Độc Đắc: <b>{rowForecast.jackpot_probability_display}</b></span>
+                        {/* Match Result or Waiting Status */}
+                        {evalRow ? (
+                          <div className="text-xs flex flex-wrap items-center gap-2.5 pt-2 sm:pt-0 border-t sm:border-t-0 border-slate-800">
+                            <span className="text-slate-400">Trùng <b className="text-amber-400">{evalRow.match_count}/6</b></span>
+                            <span className={`font-bold ${evalRow.prize_amount > 0 ? "text-emerald-400" : "text-slate-500"}`}>
+                              {evalRow.prize_name}
+                            </span>
+                            <span className="text-[11px] text-slate-400 font-mono">({evalRow.actual_accuracy_pct}% mục tiêu)</span>
+                          </div>
+                        ) : (
+                          <div className="flex items-center gap-2">
+                            <span className="text-[11px] text-slate-500 italic">
+                              Chờ mở thưởng đối soát
+                            </span>
+                            {audit && !isAuditOpen && (
+                              <button
+                                type="button"
+                                onClick={() => toggleRowAudit(ticket.id, rIdx)}
+                                className="text-[10px] font-medium text-slate-400 hover:text-amber-400 flex items-center gap-0.5 underline underline-offset-2 transition-colors"
+                              >
+                                <span>Xem lý do</span>
+                                <ChevronDown className="w-2.5 h-2.5" />
+                              </button>
+                            )}
                           </div>
                         )}
                       </div>
 
-                      {evalRow ? (
-                        <div className="text-xs flex flex-wrap items-center gap-2.5 pt-2 sm:pt-0 border-t sm:border-t-0 border-slate-800">
-                          <span className="text-slate-400">Trùng <b className="text-amber-400">{evalRow.match_count}/6</b></span>
-                          <span className={`font-bold ${evalRow.prize_amount > 0 ? "text-emerald-400" : "text-slate-500"}`}>
-                            {evalRow.prize_name}
-                          </span>
-                          <span className="text-[11px] text-slate-400 font-mono">({evalRow.actual_accuracy_pct}% mục tiêu)</span>
+                      {/* Expandable Audit Pros & Cons Box */}
+                      {audit && isAuditOpen && (
+                        <div className="border-t border-slate-800/80 bg-slate-900/90 p-4 space-y-3.5 animate-fadeIn">
+                          <div className="flex items-center justify-between border-b border-slate-800/60 pb-2">
+                            <div className="flex items-center gap-2">
+                              <Lightbulb className="w-4 h-4 text-amber-400" />
+                              <span className="text-xs font-bold text-white uppercase tracking-wider">
+                                Thẩm Định Xác Suất Dãy {String.fromCharCode(65 + rIdx)}: {audit.verdict_label}
+                              </span>
+                            </div>
+                            <span className="text-xs font-mono font-bold text-amber-400 bg-amber-500/10 border border-amber-500/20 px-2 py-0.5 rounded">
+                              Điểm thẩm định: {audit.score} / 100
+                            </span>
+                          </div>
+
+                          {/* 2 Columns: Pros vs Cons */}
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+                            {/* Pros: Why you SHOULD use this row */}
+                            <div className="p-3 rounded-xl bg-emerald-950/20 border border-emerald-800/40 space-y-2">
+                              <div className="flex items-center gap-1.5 text-xs font-bold text-emerald-400 border-b border-emerald-800/30 pb-1.5">
+                                <ThumbsUp className="w-3.5 h-3.5" />
+                                <span>Lý Do NÊN Dùng Dãy Này Kỳ Này (Ưu Thế)</span>
+                              </div>
+                              <ul className="space-y-1.5 text-[11px] text-slate-300">
+                                {audit.pros && audit.pros.length > 0 ? (
+                                  audit.pros.map((pro: string, pIdx: number) => (
+                                    <li key={pIdx} className="flex items-start gap-1.5 leading-relaxed">
+                                      <span className="text-emerald-400 font-bold shrink-0 mt-0.5">✓</span>
+                                      <span>{pro}</span>
+                                    </li>
+                                  ))
+                                ) : (
+                                  <li className="text-slate-500 italic">Không có ưu điểm xác suất nổi bật</li>
+                                )}
+                              </ul>
+                            </div>
+
+                            {/* Cons: Why you SHOULD BE CAREFUL */}
+                            <div className="p-3 rounded-xl bg-rose-950/20 border border-rose-800/40 space-y-2">
+                              <div className="flex items-center gap-1.5 text-xs font-bold text-rose-400 border-b border-rose-800/30 pb-1.5">
+                                <ThumbsDown className="w-3.5 h-3.5" />
+                                <span>Điểm Yếu / Rủi Ro Cần Cân Nhắc</span>
+                              </div>
+                              <ul className="space-y-1.5 text-[11px] text-slate-300">
+                                {audit.cons && audit.cons.length > 0 ? (
+                                  audit.cons.map((con: string, cIdx: number) => (
+                                    <li key={cIdx} className="flex items-start gap-1.5 leading-relaxed">
+                                      <span className="text-rose-400 font-bold shrink-0 mt-0.5">⚠</span>
+                                      <span>{con}</span>
+                                    </li>
+                                  ))
+                                ) : (
+                                  <li className="text-emerald-400/80 italic">Dãy số không ghi nhận bất thường xác suất lớn</li>
+                                )}
+                              </ul>
+                            </div>
+                          </div>
+
+                          {/* Tactical Advice */}
+                          {audit.tactical_advice && (
+                            <div className="p-3 rounded-xl bg-indigo-950/30 border border-indigo-800/40 flex items-start gap-2.5 text-xs text-indigo-200">
+                              <Compass className="w-4 h-4 text-indigo-400 shrink-0 mt-0.5" />
+                              <div className="space-y-0.5">
+                                <span className="font-bold text-indigo-300">Chiến Thuật Phân Bổ:</span>
+                                <p className="text-[11px] text-slate-300 leading-relaxed">
+                                  {audit.tactical_advice}
+                                </p>
+                              </div>
+                            </div>
+                          )}
                         </div>
-                      ) : (
-                        <span className="text-[11px] text-slate-500 italic">
-                          Chờ mở thưởng để học hỏi đối soát thực tế
-                        </span>
                       )}
                     </div>
                   );

@@ -58,3 +58,24 @@ def test_calculate_distribution():
     # Draw 1: [1, 2, 3, 4, 5, 6] -> sum = 21, 3 odd, 3 even
     assert result["sum_min"] == 21
     assert "3_odd_3_even" in result["even_odd_counts"]
+
+def test_audit_single_row_recommendation():
+    """Verify 4-pillar algorithmic audit identifies pros, cons, and verdict."""
+    from app.analytics.audit import audit_single_row_recommendation
+
+    # Balanced optimal row for Mega 6/45: sum = 138, 3C:3L, 4 decades
+    row_optimal = [5, 12, 19, 28, 34, 40]
+    audit_res = audit_single_row_recommendation("mega_6_45", row_optimal)
+
+    assert "verdict_code" in audit_res
+    assert audit_res["verdict_code"] == "recommended"
+    assert len(audit_res["pros"]) >= 2
+    assert len(audit_res["cons"]) >= 1
+    assert audit_res["score"] >= 80.0
+    assert "tactical_advice" in audit_res
+
+    # Unfavorable row: sum = 35 (too low), 6 odds, consecutive triplet [1, 2, 3]
+    row_bad = [1, 2, 3, 5, 7, 17]
+    bad_res = audit_single_row_recommendation("mega_6_45", row_bad)
+    assert bad_res["verdict_code"] in ("consider", "unfavorable")
+    assert len(bad_res["cons"]) >= 1

@@ -35,7 +35,21 @@ async def test_save_and_list_ticket():
         list_res = await client.get("/api/v1/tickets?game_code=mega_6_45")
         assert list_res.status_code == 200
         list_data = list_res.json()["data"]
-        assert any(t["id"] == ticket_id for t in list_data)
+        matching = [t for t in list_data if t["id"] == ticket_id]
+        assert len(matching) == 1
+        ticket_saved = matching[0]
+        # Verify that each row forecast includes an audit breakdown
+        row_forecasts = ticket_saved["predicted_analysis"]["row_forecasts"]
+        assert len(row_forecasts) == 2
+        for rf in row_forecasts:
+            assert "audit" in rf
+            audit = rf["audit"]
+            assert "verdict_code" in audit
+            assert "verdict_label" in audit
+            assert "score" in audit
+            assert isinstance(audit["pros"], list)
+            assert isinstance(audit["cons"], list)
+            assert "tactical_advice" in audit
 
 @pytest.mark.asyncio
 async def test_evaluate_tickets():

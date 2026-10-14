@@ -1,3 +1,4 @@
+from pathlib import Path
 from typing import AsyncGenerator
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from sqlalchemy import select
@@ -5,6 +6,12 @@ from sqlalchemy import select
 from app.config import settings
 from app.models.base import Base
 from app.models.game import LotteryGame
+
+# Ensure parent directory exists if using SQLite file path
+if "sqlite" in settings.DATABASE_URL:
+    db_path_str = settings.DATABASE_URL.replace("sqlite+aiosqlite:///", "").replace("sqlite:///", "")
+    if db_path_str and not db_path_str.startswith(":memory:"):
+        Path(db_path_str).parent.mkdir(parents=True, exist_ok=True)
 
 engine = create_async_engine(settings.DATABASE_URL, echo=False)
 AsyncSessionLocal = async_sessionmaker(engine, expire_on_commit=False, class_=AsyncSession)
