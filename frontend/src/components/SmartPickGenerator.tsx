@@ -167,11 +167,32 @@ export const SmartPickGenerator: React.FC<SmartPickProps> = ({ gameCode, onRunBa
     const deltaStr = deltaPct >= 0 ? `+${deltaPct}%` : `${deltaPct}%`;
     const jackpotProbStr = `${baseRatio} (${deltaStr})`;
 
+    const formatRatio = (inv: number) => {
+      if (inv >= 1000000) return `1/${(inv / 1000000).toFixed(2)}M`;
+      if (inv >= 1000) return `1/${(inv / 1000).toFixed(1)}K`;
+      return `1/${Math.round(inv)}`;
+    };
+
+    const pAnyBase = isPower ? 75 : 42;
+    const pThirdBase = isPower ? 78.7 : 44.56;
+    const pSecondBase = isPower ? 1643 : 733;
+    const pFirstBase = isPower ? 100659 : 34808;
+
+    const anyPrizeRatio = formatRatio(pAnyBase / cycleMultiplier);
+    const thirdPrizeRatio = formatRatio(pThirdBase / cycleMultiplier);
+    const secondPrizeRatio = formatRatio(pSecondBase / cycleMultiplier);
+    const firstPrizeRatio = formatRatio(pFirstBase / cycleMultiplier);
+
     return {
       sorted,
       sum,
       ratio: `${evens}C : ${odds}L`,
       jackpotProbStr,
+      anyPrizeRatio,
+      thirdPrizeRatio,
+      secondPrizeRatio,
+      firstPrizeRatio,
+      deltaStr,
       cycleMultiplier,
       specialNum
     };
@@ -562,19 +583,36 @@ export const SmartPickGenerator: React.FC<SmartPickProps> = ({ gameCode, onRunBa
                   </div>
                 </div>
 
-                {/* Right: Stats & Backtest Button */}
-                <div className="flex flex-wrap items-center justify-between lg:justify-end gap-4 pt-3 lg:pt-0 border-t lg:border-t-0 border-slate-800">
-                  {stats ? (
-                    <div className="text-xs text-slate-400 flex flex-wrap items-center gap-3">
-                      <span>Tổng: <b className="text-white">{stats.sum}</b></span>
-                      <span>Chẵn/Lẻ: <b className="text-white">{stats.ratio}</b></span>
-                      <div className="flex items-center gap-1.5 bg-amber-500/10 border border-amber-500/20 px-2.5 py-1 rounded-lg text-amber-300 shadow-sm">
-                        <Trophy className="w-3.5 h-3.5 text-amber-400" />
-                        <span>XS Độc Đắc Kỳ Tới:</span>
-                        <b className="font-mono text-amber-400">{stats.jackpotProbStr}</b>
+                  {/* Right: Stats & Backtest Button */}
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between lg:justify-end gap-3 pt-3 lg:pt-0 border-t lg:border-t-0 border-slate-800">
+                    {stats ? (
+                      <div className="flex flex-col gap-1.5 text-xs">
+                        <div className="text-slate-400 flex flex-wrap items-center gap-2.5">
+                          <span>Tổng: <b className="text-white">{stats.sum}</b></span>
+                          <span className="text-slate-600">|</span>
+                          <span>Chẵn/Lẻ: <b className="text-white">{stats.ratio}</b></span>
+                          <span className="text-slate-600">|</span>
+                          <span className="text-emerald-400 font-medium">
+                            Có Thưởng: <b>{stats.anyPrizeRatio}</b> ({stats.deltaStr})
+                          </span>
+                        </div>
+                        {/* Prize Tier Probability Spectrum Pills */}
+                        <div className="flex flex-wrap items-center gap-1.5 text-[11px]">
+                          <span className="px-2 py-0.5 rounded bg-amber-500/10 border border-amber-500/25 text-amber-300 font-mono" title="Xác suất giải Đặc Biệt / Jackpot">
+                            🏆 Độc Đắc: <b>{stats.jackpotProbStr}</b>
+                          </span>
+                          <span className="px-2 py-0.5 rounded bg-purple-500/10 border border-purple-500/25 text-purple-300 font-mono" title="Xác suất trúng Giải Nhất (5 số)">
+                            🥇 G1: <b>{stats.firstPrizeRatio}</b>
+                          </span>
+                          <span className="px-2 py-0.5 rounded bg-sky-500/10 border border-sky-500/25 text-sky-300 font-mono" title="Xác suất trúng Giải Nhì (4 số)">
+                            🥈 G2: <b>{stats.secondPrizeRatio}</b>
+                          </span>
+                          <span className="px-2 py-0.5 rounded bg-emerald-500/10 border border-emerald-500/25 text-emerald-300 font-mono" title="Xác suất trúng Giải Ba (3 số)">
+                            🥉 G3: <b>{stats.thirdPrizeRatio}</b>
+                          </span>
+                        </div>
                       </div>
-                    </div>
-                  ) : row.error ? (
+                    ) : row.error ? (
                     <div className="flex items-center gap-1.5 text-xs text-red-400">
                       <AlertCircle className="w-3.5 h-3.5" />
                       <span>{row.error}</span>

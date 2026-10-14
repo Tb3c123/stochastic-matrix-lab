@@ -51,6 +51,12 @@ async def test_save_and_list_ticket():
             assert isinstance(audit["cons"], list)
             assert "tactical_advice" in audit
 
+            assert "prize_probabilities" in rf
+            prize_probs = rf["prize_probabilities"]
+            assert "tiers" in prize_probs
+            assert "any_prize" in prize_probs
+            assert "multiplier" in prize_probs
+
 @pytest.mark.asyncio
 async def test_evaluate_tickets():
     transport = ASGITransport(app=app)

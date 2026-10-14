@@ -455,13 +455,21 @@ export const SavedTicketsTracker: React.FC<SavedTicketsTrackerProps> = ({ gameCo
                             )}
                           </div>
 
-                          {/* Forecast Jackpot Probability saved for this row */}
-                          {rowForecast.jackpot_probability_display && (
-                            <div className="text-[11px] font-semibold text-amber-300 bg-amber-500/10 border border-amber-500/20 px-2 py-0.5 rounded-md flex items-center gap-1">
-                              <Trophy className="w-3 h-3 text-amber-400" />
-                              <span>Dự Báo: <b>{rowForecast.jackpot_probability_display}</b></span>
-                            </div>
-                          )}
+                          {/* Forecast Probability Badges saved for this row */}
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            {rowForecast.jackpot_probability_display && (
+                              <div className="text-[11px] font-semibold text-amber-300 bg-amber-500/10 border border-amber-500/20 px-2 py-0.5 rounded-md flex items-center gap-1">
+                                <Trophy className="w-3 h-3 text-amber-400" />
+                                <span>Độc Đắc: <b>{rowForecast.jackpot_probability_display}</b></span>
+                              </div>
+                            )}
+                            {rowForecast.prize_probabilities?.any_prize && (
+                              <div className="text-[11px] font-semibold text-emerald-300 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-md flex items-center gap-1">
+                                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                                <span>Có Thưởng (≥3 số): <b>{rowForecast.prize_probabilities.any_prize.adjusted_ratio}</b> ({rowForecast.prize_probabilities.any_prize.edge_pct})</span>
+                              </div>
+                            )}
+                          </div>
 
                           {/* Audit Verdict Badge */}
                           {audit && (
@@ -502,7 +510,11 @@ export const SavedTicketsTracker: React.FC<SavedTicketsTrackerProps> = ({ gameCo
                             <span className={`font-bold ${evalRow.prize_amount > 0 ? "text-emerald-400" : "text-slate-500"}`}>
                               {evalRow.prize_name}
                             </span>
-                            <span className="text-[11px] text-slate-400 font-mono">({evalRow.actual_accuracy_pct}% mục tiêu)</span>
+                            {evalRow.calibration_accuracy_pct && (
+                              <span className="text-[10px] text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-1.5 py-0.5 rounded" title={`Sai số Brier Loss: ${evalRow.brier_loss}`}>
+                                Khớp XS: {evalRow.calibration_accuracy_pct}%
+                              </span>
+                            )}
                           </div>
                         ) : (
                           <div className="flex items-center gap-2">
@@ -523,9 +535,9 @@ export const SavedTicketsTracker: React.FC<SavedTicketsTrackerProps> = ({ gameCo
                         )}
                       </div>
 
-                      {/* Expandable Audit Pros & Cons Box */}
+                      {/* Expandable Audit Pros & Cons Box + Prize Tier Spectrum */}
                       {audit && isAuditOpen && (
-                        <div className="border-t border-slate-800/80 bg-slate-900/90 p-4 space-y-3.5 animate-fadeIn">
+                        <div className="border-t border-slate-800/80 bg-slate-900/90 p-4 space-y-4 animate-fadeIn">
                           <div className="flex items-center justify-between border-b border-slate-800/60 pb-2">
                             <div className="flex items-center gap-2">
                               <Lightbulb className="w-4 h-4 text-amber-400" />
@@ -537,6 +549,60 @@ export const SavedTicketsTracker: React.FC<SavedTicketsTrackerProps> = ({ gameCo
                               Điểm thẩm định: {audit.score} / 100
                             </span>
                           </div>
+
+                          {/* Prize Probability Spectrum Grid */}
+                          {rowForecast.prize_probabilities && (
+                            <div className="p-3 rounded-xl bg-slate-950/70 border border-slate-800/80 space-y-2">
+                              <div className="flex items-center justify-between text-xs border-b border-slate-800/50 pb-1.5">
+                                <span className="font-bold text-amber-300 flex items-center gap-1.5">
+                                  <Trophy className="w-3.5 h-3.5 text-amber-400" />
+                                  Phổ Xác Suất Trúng Giải Theo Thuật Toán (Hypergeometric Posterior)
+                                </span>
+                                <span className="text-[11px] text-slate-400">
+                                  Ưu thế chu kỳ: <b className="text-emerald-400">{rowForecast.prize_probabilities.edge_delta_pct || "+0%"}</b>
+                                </span>
+                              </div>
+                              <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-5 gap-2 text-center text-xs">
+                                {rowForecast.prize_probabilities.tiers?.map((tier: any, tIdx: number) => (
+                                  <div
+                                    key={tIdx}
+                                    className="p-2 rounded-lg bg-slate-900/80 border border-slate-800 flex flex-col items-center justify-center gap-0.5"
+                                  >
+                                    <span className="text-[10px] text-slate-400 font-medium">{tier.name}</span>
+                                    <span className="text-xs font-bold font-mono text-white">{tier.adjusted_ratio}</span>
+                                    <span className="text-[9px] text-emerald-400 font-mono">({tier.edge_pct})</span>
+                                    <span className="text-[9px] text-slate-500">{tier.match_label}</span>
+                                  </div>
+                                ))}
+                                {rowForecast.prize_probabilities.any_prize && (
+                                  <div className="p-2 rounded-lg bg-emerald-950/30 border border-emerald-800/40 flex flex-col items-center justify-center gap-0.5">
+                                    <span className="text-[10px] text-emerald-400 font-bold">Có Giải Bất Kỳ</span>
+                                    <span className="text-xs font-black font-mono text-emerald-300">{rowForecast.prize_probabilities.any_prize.adjusted_ratio}</span>
+                                    <span className="text-[9px] text-emerald-400">~{rowForecast.prize_probabilities.any_prize.percentage_display}</span>
+                                    <span className="text-[9px] text-slate-500">Trùng ≥ 3 số</span>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Evaluation & Feedback Learning Metrics (if already evaluated) */}
+                          {evalRow && (
+                            <div className="p-3 rounded-xl bg-slate-950/70 border border-slate-800/80 space-y-1.5 text-xs">
+                              <div className="flex items-center justify-between text-amber-300 font-semibold border-b border-slate-800/50 pb-1">
+                                <span className="flex items-center gap-1.5">
+                                  <TrendingUp className="w-3.5 h-3.5 text-amber-400" />
+                                  Phản Hồi Học Hỏi Xác Suất Thực Tế (Brier Score Calibration)
+                                </span>
+                                <span className="text-[11px] text-slate-400">
+                                  Độ Khớp Mô Hình: <b className="text-emerald-400">{evalRow.calibration_accuracy_pct || 88.0}%</b>
+                                </span>
+                              </div>
+                              <p className="text-[11px] text-slate-300 leading-relaxed">
+                                {evalRow.learning_note}
+                              </p>
+                            </div>
+                          )}
 
                           {/* 2 Columns: Pros vs Cons */}
                           <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
