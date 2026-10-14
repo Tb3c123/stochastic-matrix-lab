@@ -42,7 +42,6 @@ export const SavedTicketsTracker: React.FC<SavedTicketsTrackerProps> = ({ gameCo
   const [viewMode, setViewMode] = useState<"grouped" | "flat">("grouped");
   const [loading, setLoading] = useState<boolean>(false);
   const [evaluating, setEvaluating] = useState<boolean>(false);
-  const [simulating, setSimulating] = useState<boolean>(false);
   const [expandedId, setExpandedId] = useState<number | null>(null);
   const [openRowAudits, setOpenRowAudits] = useState<Record<string, boolean>>({});
   const [evaluateNotice, setEvaluateNotice] = useState<string | null>(null);
@@ -100,33 +99,7 @@ export const SavedTicketsTracker: React.FC<SavedTicketsTrackerProps> = ({ gameCo
     }
   };
 
-  const handleSimulateWalkForward = async () => {
-    if (!confirm("Bắt đầu nạp mô phỏng Walk-Forward đối soát ~20 ngày gần nhất cho cả Mega 6/45 và Power 6/55 với đầy đủ 6 thuật toán?")) {
-      return;
-    }
-    setSimulating(true);
-    setEvaluateNotice(null);
-    try {
-      const res = await fetch(`${API_BASE_URL}/api/v1/tickets/simulate-walk-forward?days_back=20`, {
-        method: "POST"
-      });
-      const json = await res.json();
-      if (json.success && json.data) {
-        const d = json.data;
-        setEvaluateNotice(
-          `⚡ Đã nạp thành công ${d.total_simulated_tickets} vé (${d.total_winning_tickets} vé trúng giải - ${new Intl.NumberFormat("vi-VN").format(d.total_prize_vnd)} đ) qua ${d.draws_simulated_count} kỳ quay thực tế!`
-        );
-        await fetchTicketsAndPerformance();
-      } else {
-        alert(json.error?.message || "Mô phỏng thất bại");
-      }
-    } catch (e) {
-      console.error("Simulation error:", e);
-      alert("Lỗi kết nối khi nạp dữ liệu mô phỏng");
-    } finally {
-      setSimulating(false);
-    }
-  };
+
 
   useEffect(() => {
     fetchTicketsAndPerformance();
@@ -634,20 +607,11 @@ export const SavedTicketsTracker: React.FC<SavedTicketsTrackerProps> = ({ gameCo
         <div className="max-w-md mx-auto space-y-2">
           <h3 className="text-xl font-bold text-white">Chưa Có Vé Nào Trong Sổ Đối Soát ({gameCode === "mega_6_45" ? "Mega 6/45" : "Power 6/55"})</h3>
           <p className="text-sm text-slate-400">
-            Hệ thống chưa tìm thấy vé đã lưu hoặc dữ liệu mô phỏng đối soát cho loại vé này. Bạn có thể nạp ngay dữ liệu mô phỏng đối soát 20 ngày gần nhất (đầy đủ 6 thuật toán) để xem kết quả.
+            Hệ thống chưa tìm thấy vé đã lưu cho loại vé này. Bạn có thể chuyển sang tab Sinh Vé Thông Minh để tạo và lưu vé mới đối soát với kỳ mở thưởng tiếp theo.
           </p>
         </div>
 
         <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
-          <button
-            onClick={handleSimulateWalkForward}
-            disabled={simulating}
-            className="px-5 py-3 rounded-xl bg-gradient-to-r from-amber-500 to-yellow-400 text-slate-950 font-black text-sm flex items-center gap-2 hover:shadow-lg hover:shadow-amber-500/20 transition-all cursor-pointer disabled:opacity-50"
-          >
-            <Zap className={`w-4 h-4 ${simulating ? "animate-spin" : ""}`} />
-            {simulating ? "Đang Nạp & Đối Soát..." : "⚡ Nạp Dữ Liệu Mô Phỏng (<20 Ngày)"}
-          </button>
-
           <button
             onClick={fetchTicketsAndPerformance}
             disabled={loading}
@@ -678,17 +642,6 @@ export const SavedTicketsTracker: React.FC<SavedTicketsTrackerProps> = ({ gameCo
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          {/* Quick Simulate Button right inside Ledger */}
-          <button
-            onClick={handleSimulateWalkForward}
-            disabled={simulating}
-            className="px-3.5 py-2 rounded-xl text-xs font-black text-slate-950 bg-gradient-to-r from-amber-500 to-yellow-400 hover:from-amber-400 hover:to-yellow-300 flex items-center gap-1.5 transition-all cursor-pointer disabled:opacity-50 shadow-md"
-            title="Nạp dữ liệu mô phỏng đối soát 20 ngày gần nhất (đầy đủ 6 thuật toán)"
-          >
-            <Zap className={`w-3.5 h-3.5 ${simulating ? "animate-spin" : ""}`} />
-            {simulating ? "Đang Nạp..." : "⚡ Nạp Vé Mô Phỏng"}
-          </button>
-
           <button
             onClick={handleEvaluate}
             disabled={evaluating}
