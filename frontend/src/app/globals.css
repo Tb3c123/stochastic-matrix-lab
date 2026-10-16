@@ -29,3 +29,10 @@ body {
   background: radial-gradient(circle at 35% 35%, #60a5fa, #2563eb 70%, #1e40af);
   box-shadow: 0 4px 10px rgba(37, 99, 235, 0.4), inset 0 2px 3px rgba(255, 255, 255, 0.4);
 }
+
+.ball-special {
+  background: rgba(245, 158, 11, 0.2);
+  border: 2px solid #fbbf24;
+  color: #fcd34d;
+  box-shadow: 0 0 10px rgba(251, 191, 36, 0.3);
+}

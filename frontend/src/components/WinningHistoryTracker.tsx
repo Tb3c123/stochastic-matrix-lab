@@ -453,12 +453,15 @@ export const WinningHistoryTracker: React.FC<WinningHistoryTrackerProps> = ({
                         </span>
                       ))}
                       {actualSpecialNumber && (
-                        <span
-                          className="w-6 h-6 rounded-full bg-amber-500 text-slate-950 font-bold text-[11px] flex items-center justify-center font-mono"
-                          title="Số đặc biệt Power 6/55"
-                        >
-                          {actualSpecialNumber < 10 ? `0${actualSpecialNumber}` : actualSpecialNumber}
-                        </span>
+                        <div className="flex items-center gap-1 pl-1">
+                          <span className="text-amber-500 font-extrabold text-xs">+</span>
+                          <span
+                            className="w-6 h-6 rounded-full bg-amber-500/20 border-2 border-amber-400 text-amber-300 font-black text-[11px] flex items-center justify-center font-mono shadow-sm"
+                            title="Số đặc biệt Power 6/55"
+                          >
+                            {actualSpecialNumber < 10 ? `0${actualSpecialNumber}` : actualSpecialNumber}
+                          </span>
+                        </div>
                       )}
                     </div>
                   </div>
@@ -509,16 +512,19 @@ export const WinningHistoryTracker: React.FC<WinningHistoryTrackerProps> = ({
                               );
                             })}
                             {ticket.game_code === "power_6_55" && row.special_number && (
-                              <span
-                                className={`w-7 h-7 md:w-8 md:h-8 rounded-full text-xs font-black flex items-center justify-center transition-all ${
-                                  row.matched_special
-                                    ? "bg-gradient-to-br from-amber-400 to-yellow-300 text-slate-950 ring-2 ring-yellow-200 shadow-md shadow-amber-500/50 scale-105"
-                                    : "bg-amber-500/20 text-amber-300 border border-amber-500/40"
-                                }`}
-                                title={`Số đặc biệt Power 6/55: ${row.special_number < 10 ? `0${row.special_number}` : row.special_number}${row.matched_special ? " (Trúng ĐB!)" : ""}`}
-                              >
-                                {row.special_number < 10 ? `0${row.special_number}` : row.special_number}
-                              </span>
+                              <div className="flex items-center gap-1 pl-1">
+                                <span className="text-amber-500 font-extrabold text-xs">+</span>
+                                <span
+                                  className={`w-7 h-7 md:w-8 md:h-8 rounded-full text-xs font-black flex items-center justify-center transition-all ${
+                                    row.matched_special
+                                      ? "bg-gradient-to-br from-amber-400 via-yellow-300 to-amber-500 text-slate-950 ring-2 ring-yellow-200 shadow-md shadow-amber-500/50 scale-105 border-2 border-white animate-pulse"
+                                      : "bg-amber-500/20 border-2 border-amber-400 text-amber-300 shadow-sm"
+                                  }`}
+                                  title={`Số đặc biệt Power 6/55: ${row.special_number < 10 ? `0${row.special_number}` : row.special_number}${row.matched_special ? " (Trúng ĐB!)" : ""}`}
+                                >
+                                  {row.special_number < 10 ? `0${row.special_number}` : row.special_number}
+                                </span>
+                              </div>
                             )}
                           </div>
                         </div>

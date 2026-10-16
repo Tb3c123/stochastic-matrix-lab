@@ -441,16 +441,19 @@ export const SavedTicketsTracker: React.FC<SavedTicketsTrackerProps> = ({ gameCo
                         const spNum = evalRow?.special_number ?? rowForecast?.special_number ?? null;
                         const isSpMatch = !!evalRow?.matched_special;
                         return (
-                          <span
-                            className={`w-8 h-8 rounded-full font-black text-xs flex items-center justify-center transition-all ${
-                              isSpMatch
-                                ? "bg-gradient-to-br from-amber-400 to-yellow-300 text-slate-950 ring-2 ring-yellow-200 shadow-lg shadow-amber-500/50 scale-110 animate-pulse border-2 border-yellow-200"
-                                : "ball-special text-slate-950 border-2 border-yellow-300 shadow-md"
-                            }`}
-                            title={`Số đặc biệt Power 6/55: ${spNum ? (spNum < 10 ? `0${spNum}` : spNum) : "ĐB"}${isSpMatch ? " (TRÚNG ĐẶC BIỆT!)" : ""}`}
-                          >
-                            {spNum ? (spNum < 10 ? `0${spNum}` : spNum) : "★"}
-                          </span>
+                          <div className="flex items-center gap-1.5 pl-1">
+                            <span className="text-amber-500 font-extrabold text-xs">+</span>
+                            <span
+                              className={`w-8 h-8 rounded-full font-black text-xs flex items-center justify-center transition-all ${
+                                isSpMatch
+                                  ? "bg-gradient-to-br from-amber-400 via-yellow-300 to-amber-500 text-slate-950 ring-4 ring-yellow-300/50 shadow-lg shadow-amber-500/50 scale-110 animate-pulse border-2 border-white"
+                                  : "bg-amber-500/20 border-2 border-amber-400 text-amber-300 shadow-md shadow-amber-500/20"
+                              }`}
+                              title={`Số đặc biệt Power 6/55: ${spNum ? (spNum < 10 ? `0${spNum}` : spNum) : "ĐB"}${isSpMatch ? " (TRÚNG ĐẶC BIỆT!)" : ""}`}
+                            >
+                              {spNum ? (spNum < 10 ? `0${spNum}` : spNum) : "★"}
+                            </span>
+                          </div>
                         );
                       })()}
                     </div>
