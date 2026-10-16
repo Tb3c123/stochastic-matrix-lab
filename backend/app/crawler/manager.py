@@ -85,3 +85,28 @@ class CrawlerManager:
             if created:
                 inserted_count += 1
         return inserted_count
+
+    async def sync_recent_draws(self, game_code: str, limit: int = 20) -> List[Dict[str, Any]]:
+        """Sync recent draws from primary / fallback mirror and return newly inserted draws."""
+        newly_inserted = []
+        try:
+            history = await fetch_fallback_history(game_code)
+            if history:
+                target_draws = history[-limit:] if limit > 0 else history
+                for d in target_draws:
+                    created = await self.save_draw(game_code, d)
+                    if created:
+                        newly_inserted.append(d)
+        except Exception as e:
+            logger.error(f"Error in sync_recent_draws fallback for {game_code}: {e}")
+
+        try:
+            primary_data = await fetch_primary_latest(game_code)
+            if primary_data:
+                created = await self.save_draw(game_code, primary_data)
+                if created:
+                    newly_inserted.append(primary_data)
+        except Exception as e:
+            logger.debug(f"Primary crawl in sync_recent_draws for {game_code}: {e}")
+
+        return newly_inserted

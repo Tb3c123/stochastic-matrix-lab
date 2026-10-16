@@ -508,13 +508,29 @@ export const WinningHistoryTracker: React.FC<WinningHistoryTrackerProps> = ({
                                 </span>
                               );
                             })}
+                            {ticket.game_code === "power_6_55" && row.special_number && (
+                              <span
+                                className={`w-7 h-7 md:w-8 md:h-8 rounded-full text-xs font-black flex items-center justify-center transition-all ${
+                                  row.matched_special
+                                    ? "bg-gradient-to-br from-amber-400 to-yellow-300 text-slate-950 ring-2 ring-yellow-200 shadow-md shadow-amber-500/50 scale-105"
+                                    : "bg-amber-500/20 text-amber-300 border border-amber-500/40"
+                                }`}
+                                title={`Số đặc biệt Power 6/55: ${row.special_number < 10 ? `0${row.special_number}` : row.special_number}${row.matched_special ? " (Trúng ĐB!)" : ""}`}
+                              >
+                                {row.special_number < 10 ? `0${row.special_number}` : row.special_number}
+                              </span>
+                            )}
                           </div>
                         </div>
 
                         {/* Match count note */}
                         <div className="text-xs text-right font-medium text-slate-400 flex items-center gap-1.5 md:self-center">
                           <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
-                          <span>Trùng <b className="text-white">{row.match_count}/6 số</b> ({matchedNums.map((n) => (n < 10 ? `0${n}` : n)).join(", ")})</span>
+                          <span>
+                            Trùng <b className="text-white">{row.match_count}/6 số</b>
+                            {row.matched_special && <b className="text-amber-400"> + Số ĐB ★</b>}
+                            {" "}({matchedNums.map((n: number) => (n < 10 ? `0${n}` : n)).join(", ")})
+                          </span>
                         </div>
                       </div>
                     );

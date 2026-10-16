@@ -437,11 +437,22 @@ export const SavedTicketsTracker: React.FC<SavedTicketsTrackerProps> = ({ gameCo
                           </span>
                         );
                       })}
-                      {ticket.game_code === "power_6_55" && (
-                        <span className="w-8 h-8 rounded-full ball-special text-slate-950 font-black text-xs flex items-center justify-center border-2 border-yellow-300 shadow-md">
-                          {rowForecast?.special_number ? (rowForecast.special_number < 10 ? `0${rowForecast.special_number}` : rowForecast.special_number) : "★"}
-                        </span>
-                      )}
+                      {ticket.game_code === "power_6_55" && (() => {
+                        const spNum = evalRow?.special_number ?? rowForecast?.special_number ?? null;
+                        const isSpMatch = !!evalRow?.matched_special;
+                        return (
+                          <span
+                            className={`w-8 h-8 rounded-full font-black text-xs flex items-center justify-center transition-all ${
+                              isSpMatch
+                                ? "bg-gradient-to-br from-amber-400 to-yellow-300 text-slate-950 ring-2 ring-yellow-200 shadow-lg shadow-amber-500/50 scale-110 animate-pulse border-2 border-yellow-200"
+                                : "ball-special text-slate-950 border-2 border-yellow-300 shadow-md"
+                            }`}
+                            title={`Số đặc biệt Power 6/55: ${spNum ? (spNum < 10 ? `0${spNum}` : spNum) : "ĐB"}${isSpMatch ? " (TRÚNG ĐẶC BIỆT!)" : ""}`}
+                          >
+                            {spNum ? (spNum < 10 ? `0${spNum}` : spNum) : "★"}
+                          </span>
+                        );
+                      })()}
                     </div>
                   </div>
 
@@ -451,12 +462,15 @@ export const SavedTicketsTracker: React.FC<SavedTicketsTrackerProps> = ({ gameCo
                       <div className="flex items-center gap-2">
                         <span
                           className={`px-2.5 py-1 rounded-lg font-bold text-xs ${
-                            evalRow.match_count >= 3
+                            evalRow.prize_amount > 0 || evalRow.matched_special
                               ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30"
+                              : evalRow.match_count >= 3
+                              ? "bg-emerald-500/15 text-emerald-300 border border-emerald-500/20"
                               : "bg-slate-800 text-slate-400"
                           }`}
                         >
                           Trùng {evalRow.match_count}/6 số
+                          {evalRow.matched_special && " + Số ĐB ★"}
                           {evalRow.prize_amount > 0 && ` (${evalRow.prize_name} - ${formatVND(evalRow.prize_amount)})`}
                         </span>
                       </div>

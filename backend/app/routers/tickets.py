@@ -634,15 +634,14 @@ async def get_upcoming_draw(
         }
     )
 
-@router.post("/evaluate", response_model=ResponseEnvelope)
-async def evaluate_tickets(
-    payload: Optional[EvaluateTicketsRequest] = None,
-    db: AsyncSession = Depends(get_db_session)
-):
-    """Evaluate pending saved tickets strictly against the upcoming target draw once its official result is landed."""
+async def evaluate_pending_tickets_core(
+    db: AsyncSession,
+    game_code: Optional[str] = None
+) -> Dict[str, Any]:
+    """Core evaluation engine: strictly checks pending tickets against newly landed official results."""
     query = select(SavedTicket).where(SavedTicket.status == "pending")
-    if payload and payload.game_code:
-        query = query.where(SavedTicket.game_code == payload.game_code)
+    if game_code:
+        query = query.where(SavedTicket.game_code == game_code)
 
     tickets_res = await db.execute(query)
     pending_tickets = tickets_res.scalars().all()
@@ -657,7 +656,7 @@ async def evaluate_tickets(
         if not game:
             continue
 
-        # Look specifically for the upcoming target period (strictly forbidden from past completed draws prior to ticket creation)
+        # Look specifically for the upcoming target period
         draw_res = await db.execute(
             select(DrawResult).where(
                 DrawResult.game_id == game.id,
@@ -681,15 +680,27 @@ async def evaluate_tickets(
             if match_count > best_match:
                 best_match = match_count
 
+            # Extract row forecast and special number for Power 6/55
+            row_forecasts = ticket.predicted_analysis.get("row_forecasts", [])
+            row_f = row_forecasts[r_idx] if r_idx < len(row_forecasts) else {}
+            sp = row_f.get("special_number")
+
+            matched_special = (
+                ticket.game_code == "power_6_55"
+                and sp is not None
+                and special_num is not None
+                and sp == special_num
+            )
+
             prize_name = "Không trúng"
             prize_amount = 0
             if match_count == 6:
                 prize_name = "Jackpot 1"
-                prize_amount = actual_draw.jackpot_1_amount
+                prize_amount = actual_draw.jackpot_1_amount or (12_000_000_000 if ticket.game_code == "mega_6_45" else 30_000_000_000)
             elif match_count == 5:
-                if special_num and special_num in row:
+                if matched_special:
                     prize_name = "Jackpot 2"
-                    prize_amount = actual_draw.jackpot_2_amount
+                    prize_amount = actual_draw.jackpot_2_amount or 3_500_000_000
                 else:
                     prize_name = "Giải Nhất"
                     prize_amount = 10_000_000 if ticket.game_code == "mega_6_45" else 40_000_000
@@ -701,18 +712,14 @@ async def evaluate_tickets(
                 prize_amount = 30_000 if ticket.game_code == "mega_6_45" else 50_000
 
             # Compare against the row's original prize probabilities and forecast
-            row_forecasts = ticket.predicted_analysis.get("row_forecasts", [])
-            row_f = row_forecasts[r_idx] if r_idx < len(row_forecasts) else {}
             pred_jackpot_display = row_f.get("jackpot_probability_display", "1/8.14M")
             pred_score = row_f.get("forecast_score", 80.0)
 
             prize_probs = row_f.get("prize_probabilities")
             if not prize_probs:
-                sp = row_f.get("special_number")
                 prize_probs = calculate_prize_tier_probabilities(ticket.game_code, row, sp)
 
             # Continuous Learning Metric: Brier Score Loss
-            # Target outcomes: Y_any (>=3), Y_third (==3), Y_second (==4), Y_first (==5), Y_jackpot (==6)
             y_any = 1.0 if match_count >= 3 else 0.0
             y_third = 1.0 if match_count == 3 else 0.0
             y_second = 1.0 if match_count == 4 else 0.0
@@ -728,8 +735,9 @@ async def evaluate_tickets(
             calibration_accuracy_pct = max(50.0, round((1.0 - math.sqrt(row_brier_loss)) * 100, 1))
 
             actual_accuracy_pct = round((match_count / 6.0) * 100, 1)
+            special_match_text = f" + Trúng bóng đặc biệt ĐB #{sp:02d}!" if matched_special else ""
             learning_note = (
-                f"Dãy #{r_idx + 1}: Dự báo Giải Ba {tier_third.get('adjusted_ratio', '1/45')}, thực tế trùng {match_count}/6 số "
+                f"Dãy #{r_idx + 1}: Dự báo Giải Ba {tier_third.get('adjusted_ratio', '1/45')}, thực tế trùng {match_count}/6 số{special_match_text} "
                 + (f"({prize_name}) - Đạt {actual_accuracy_pct}% mục tiêu." if prize_amount > 0 else f"- Đạt {actual_accuracy_pct}% chu kỳ. ")
                 + f"Sai số Brier: {row_brier_loss} (Độ khớp xác suất {calibration_accuracy_pct}%)."
             )
@@ -738,6 +746,8 @@ async def evaluate_tickets(
             row_evaluations.append({
                 "row_index": r_idx + 1,
                 "numbers": row,
+                "special_number": sp,
+                "matched_special": matched_special,
                 "predicted_jackpot_prob": pred_jackpot_display,
                 "predicted_score": pred_score,
                 "prize_probabilities": prize_probs,
@@ -763,6 +773,7 @@ async def evaluate_tickets(
             "actual_draw_date": actual_draw.draw_date,
             "actual_winning_numbers": actual_draw.winning_numbers,
             "actual_special_number": actual_draw.special_number,
+            "special_number": actual_draw.special_number,
             "best_match_count": best_match,
             "total_prize_vnd": total_prize,
             "average_brier_loss": avg_row_brier,
@@ -793,11 +804,10 @@ async def evaluate_tickets(
         # Trigger continuous hybrid reinforcement learning across evaluated tickets
         from app.analytics.hybrid_learning import recalibrate_hybrid_learning
         try:
-            game_code_target = payload.game_code if payload and payload.game_code else "mega_6_45"
+            game_code_target = game_code or "mega_6_45"
             if pending_tickets:
                 first_ticket = pending_tickets[0]
                 game_code_target = first_ticket.game_code
-                # Find matching draw for this game
                 d_res = await db.execute(
                     select(DrawResult).order_by(DrawResult.id.desc()).limit(1)
                 )
@@ -818,13 +828,41 @@ async def evaluate_tickets(
     else:
         message = "Không có vé nào đang chờ đối soát cho kỳ sắp tới."
 
-    return ResponseEnvelope(
-        success=True,
-        data={
-            "evaluated_count": evaluated_count,
-            "message": message,
-            "waiting_targets": list(set(waiting_targets)),
-            "results": results_summary
-        }
-    )
+    return {
+        "evaluated_count": evaluated_count,
+        "message": message,
+        "waiting_targets": list(set(waiting_targets)),
+        "results": results_summary
+    }
+
+@router.post("/evaluate", response_model=ResponseEnvelope)
+async def evaluate_tickets(
+    payload: Optional[EvaluateTicketsRequest] = None,
+    db: AsyncSession = Depends(get_db_session)
+):
+    """Evaluate pending saved tickets strictly against the upcoming target draw once its official result is landed."""
+    data = await evaluate_pending_tickets_core(db, payload.game_code if payload else None)
+    return ResponseEnvelope(success=True, data=data)
+
+@router.post("/resimulate-power-655", response_model=ResponseEnvelope)
+async def resimulate_power_655_endpoint(
+    db: AsyncSession = Depends(get_db_session)
+):
+    """Clear existing Power 6/55 tickets and regenerate clean walk-forward dataset with 6+1 format."""
+    from app.analytics.simulation import resimulate_power_655_clean
+    result = await resimulate_power_655_clean(db)
+    return ResponseEnvelope(success=True, data=result)
+
+@router.post("/auto-cycle-now", response_model=ResponseEnvelope)
+async def auto_cycle_now_endpoint(
+    game_code: Optional[str] = Query(None),
+    db: AsyncSession = Depends(get_db_session)
+):
+    """Manually trigger the 10:00 AM AI auto cycle on-demand for one or both games."""
+    from app.analytics.hybrid_learning import execute_auto_cycle_pipeline
+    targets = [game_code] if game_code else ["mega_6_45", "power_6_55"]
+    results = {}
+    for gc in targets:
+        results[gc] = await execute_auto_cycle_pipeline(db, gc)
+    return ResponseEnvelope(success=True, data=results)
 

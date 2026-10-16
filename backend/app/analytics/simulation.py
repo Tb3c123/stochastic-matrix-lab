@@ -3,7 +3,7 @@ import random
 from datetime import datetime, timedelta
 from typing import List, Dict, Any, Optional
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, desc
+from sqlalchemy import select, desc, delete
 
 from app.models.game import LotteryGame
 from app.models.draw import DrawResult
@@ -211,6 +211,12 @@ async def run_walk_forward_simulation(
                         best_match = match_count
 
                     sp = special_numbers[r_idx]
+                    matched_special = (
+                        game_code == "power_6_55"
+                        and sp is not None
+                        and target_special_num is not None
+                        and sp == target_special_num
+                    )
                     prize_name = "Không trúng"
                     prize_amount = 0
 
@@ -218,9 +224,9 @@ async def run_walk_forward_simulation(
                         prize_name = "Jackpot 1"
                         prize_amount = target_draw.jackpot_1_amount or (12_000_000_000 if game_code == "mega_6_45" else 30_000_000_000)
                     elif match_count == 5:
-                        if target_special_num and target_special_num in r_nums:
+                        if matched_special:
                             prize_name = "Jackpot 2"
-                            prize_amount = target_draw.jackpot_2_amount or 3_000_000_000
+                            prize_amount = target_draw.jackpot_2_amount or 3_500_000_000
                         else:
                             prize_name = "Giải Nhất"
                             prize_amount = 10_000_000 if game_code == "mega_6_45" else 40_000_000
@@ -250,8 +256,9 @@ async def run_walk_forward_simulation(
                     actual_accuracy_pct = round((match_count / 6.0) * 100, 1)
 
                     strat_row_name = row_f.get("algorithm_name", strat)
+                    special_match_text = f" + Trúng bóng đặc biệt ĐB #{sp:02d}!" if matched_special else ""
                     learning_note = (
-                        f"Dãy #{r_idx + 1} ({strat_row_name}): Trùng {match_count}/6 số "
+                        f"Dãy #{r_idx + 1} ({strat_row_name}): Trùng {match_count}/6 số{special_match_text} "
                         + (f"({prize_name} - {prize_amount:,.0f} đ)." if prize_amount > 0 else "chu kỳ ổn định. ")
                         + f"Sai số Brier: {row_brier_loss} (Độ khớp {calibration_accuracy_pct}%)."
                     )
@@ -261,6 +268,7 @@ async def run_walk_forward_simulation(
                         "row_label": f"Dãy {chr(65 + r_idx)}",
                         "numbers": r_nums,
                         "special_number": sp,
+                        "matched_special": matched_special,
                         "matched_numbers": matched,
                         "match_count": match_count,
                         "actual_accuracy_pct": actual_accuracy_pct,
@@ -341,4 +349,19 @@ async def run_walk_forward_simulation(
         "total_prize_vnd": total_prize_sum,
         "draws_simulated_count": len(draws_simulated),
         "draws_simulated": draws_simulated
+    }
+
+async def resimulate_power_655_clean(db: AsyncSession, days_back: int = 20) -> Dict[str, Any]:
+    """Clean all existing evaluated/simulated Power 6/55 tickets and regenerate accurate 6+1 walk-forward simulated dataset."""
+    # 1. Delete all existing Power 6/55 tickets
+    await db.execute(delete(SavedTicket).where(SavedTicket.game_code == "power_6_55"))
+    await db.commit()
+
+    # 2. Run clean walk-forward simulation with accurate 6+1 logic
+    sim_result = await run_walk_forward_simulation(db, days_back=days_back, target_game_code="power_6_55")
+    return {
+        "action": "resimulate_power_655_clean",
+        "game_code": "power_6_55",
+        "message": "Đã dọn dẹp toàn bộ dữ liệu vé Power 6/55 cũ và tái lập giả lập chuẩn 6 số chính + 1 số đặc biệt thành công!",
+        "simulation_result": sim_result
     }

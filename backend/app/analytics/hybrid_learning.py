@@ -293,8 +293,8 @@ async def execute_auto_cycle_pipeline(db: AsyncSession, game_code: str) -> Dict[
         evaluated_tickets=matching_pending_tickets
     )
 
-    # 4. Generate 1 brand new 5-row ticket using newly calibrated weights
-    new_rows = await generate_hybrid_ticket_rows(db, game_code)
+    # 4. Generate 1 brand new 5-row ticket using newly calibrated weights (with special numbers for Power 6/55)
+    new_rows, new_specials = await generate_hybrid_ticket_rows_with_special(db, game_code)
 
     # Determine target upcoming draw
     curr_period_num = int(latest_draw.draw_period.replace("#", "")) if latest_draw.draw_period.isdigit() else 1500
@@ -315,7 +315,8 @@ async def execute_auto_cycle_pipeline(db: AsyncSession, game_code: str) -> Dict[
     ]
     row_forecasts = []
     for r_idx, r in enumerate(new_rows):
-        fc = compute_single_row_jackpot_forecast(game_code, r)
+        sp_num = new_specials[r_idx] if new_specials and r_idx < len(new_specials) else None
+        fc = compute_single_row_jackpot_forecast(game_code, r, special_number=sp_num)
         sub = row_sub_algos[r_idx] if r_idx < len(row_sub_algos) else row_sub_algos[-1]
         fc["algorithm_code"] = sub["code"]
         fc["algorithm_name"] = sub["name"]
