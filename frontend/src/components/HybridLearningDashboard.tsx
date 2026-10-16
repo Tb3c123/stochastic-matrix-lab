@@ -28,8 +28,6 @@ export const HybridLearningDashboard: React.FC<HybridLearningProps> = ({
 }) => {
   const [statusData, setStatusData] = useState<any>(null);
   const [loading, setLoading] = useState<boolean>(true);
-  const [runningCycle, setRunningCycle] = useState<boolean>(false);
-  const [runMessage, setRunMessage] = useState<string | null>(null);
 
   const fetchStatus = async () => {
     setLoading(true);
@@ -46,33 +44,6 @@ export const HybridLearningDashboard: React.FC<HybridLearningProps> = ({
     }
   };
 
-  const handleRunNow = async () => {
-    setRunningCycle(true);
-    try {
-      const res = await fetch(`${API_BASE_URL}/api/v1/auto-cycle/run-now?game_code=${gameCode}`, {
-        method: "POST"
-      });
-      const json = await res.json();
-      if (json.success && json.data) {
-        const ticket = json.data.auto_generated_ticket;
-        const recal = json.data.recalibration;
-        setRunMessage(
-          `Hoàn tất vòng lặp tự động! AI đã học hỏi từ kết quả mới, cập nhật trọng số thích nghi và tự động sinh ra 1 vé 5 dãy cho Kỳ #${ticket.target_draw_period}!`
-        );
-        await fetchStatus();
-        if (onTicketGenerated) onTicketGenerated();
-        setTimeout(() => setRunMessage(null), 8000);
-      } else {
-        setRunMessage(json.error?.message || "Vòng lặp tự động chưa thể hoàn tất.");
-      }
-    } catch (e) {
-      console.error("Run auto cycle failed:", e);
-      setRunMessage("Lỗi kết nối khi kích hoạt vòng lặp.");
-    } finally {
-      setRunningCycle(false);
-    }
-  };
-
   useEffect(() => {
     fetchStatus();
   }, [gameCode]);
@@ -82,6 +53,7 @@ export const HybridLearningDashboard: React.FC<HybridLearningProps> = ({
   const weights = statusData.weights || { w_lateness: 0.35, w_gauss_sum: 0.25, w_hot: 0.25, w_parity: 0.15 };
   const latestAiTicket = statusData.latest_ai_ticket;
   const learningLogs = statusData.learning_logs || [];
+  const banditReward = Math.round(statusData.bandit_cumulative_reward || 0);
 
   const formatDrawDateWithDay = (dateStr?: string) => {
     if (!dateStr) return "";
@@ -104,45 +76,57 @@ export const HybridLearningDashboard: React.FC<HybridLearningProps> = ({
       {/* Header */}
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pb-6 border-b border-slate-800">
         <div>
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider bg-violet-500/10 text-violet-400 border border-violet-500/20 mb-2">
-            <Cpu className="w-3.5 h-3.5" /> Hệ Thống Tự Học & Vòng Lặp Tự Động (AI Hybrid Closed-Loop)
+          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider bg-amber-500/10 text-amber-400 border border-amber-500/20 mb-2">
+            <Cpu className="w-3.5 h-3.5" /> Hệ Thống Tự Hành 100% • Chế Độ Săn Độc Đắc (Jackpot-Only RL)
           </div>
           <h3 className="text-2xl font-bold text-white flex items-center gap-2">
-            Cỗ Máy Tự Học & Tự Động Sinh Vé Chu Kỳ
+            Cỗ Máy AI Tự Học & Săn Độc Đắc Tự Động
           </h3>
           <p className="text-xs md:text-sm text-slate-400 mt-1">
-            Sau ngày ra xổ số (10:00 trưa), hệ thống tự động cào kết quả, so sánh đối soát, học hỏi cập nhật trọng số Bayes và tự sinh ra 1 vé 5 dãy mới nhất.
+            Vận hành tự động hoàn toàn: <b>19:10</b> ngày quay tự cào kết quả & đối soát; <b>10:00 sáng</b> tự học hỏi theo cơ chế <i>Thưởng Độc Đắc - Phạt Bậc Thang</i> và sinh 1 vé 5 dãy mới.
           </p>
         </div>
 
-        {/* Action Controls */}
-        <div className="flex flex-wrap items-center gap-3">
-          <div className="bg-slate-800/80 border border-slate-700/80 px-3.5 py-2 rounded-xl flex items-center gap-2">
+        {/* Autonomous Schedule Badges (No Manual Button) */}
+        <div className="flex flex-wrap items-center gap-2.5">
+          <div className="bg-slate-800/90 border border-emerald-500/30 px-3.5 py-2 rounded-xl flex items-center gap-2 shadow-sm">
             <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse"></span>
             <span className="text-xs font-semibold text-slate-300">
-              Lịch trình: <b className="text-white">10:00 Sáng sau ngày xổ</b>
+              Cào & Đối soát: <b className="text-emerald-400">19:10 Ngày Xổ</b>
             </span>
           </div>
-
-          <button
-            onClick={handleRunNow}
-            disabled={runningCycle}
-            className="px-5 py-2.5 rounded-xl text-xs md:text-sm font-bold text-white bg-gradient-to-r from-violet-600 via-purple-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 transition-all shadow-lg shadow-violet-500/25 flex items-center gap-2 cursor-pointer disabled:opacity-50"
-            title="Kích hoạt chu kỳ tự động ngay lập tức (Cập nhật kết quả -> Học hỏi -> Sinh 1 vé mới)"
-          >
-            <Zap className={`w-4 h-4 ${runningCycle ? "animate-spin text-amber-300" : "text-amber-400"}`} />
-            {runningCycle ? "Đang Học & Sinh Vé..." : "Kích Hoạt Vòng Lặp Ngay"}
-          </button>
+          <div className="bg-slate-800/90 border border-violet-500/30 px-3.5 py-2 rounded-xl flex items-center gap-2 shadow-sm">
+            <span className="w-2.5 h-2.5 rounded-full bg-violet-400 animate-pulse"></span>
+            <span className="text-xs font-semibold text-slate-300">
+              AI Sinh vé mới: <b className="text-violet-300">10:00 Sáng Hàng Ngày</b>
+            </span>
+          </div>
         </div>
       </div>
 
-      {/* Notice Banner */}
-      {runMessage && (
-        <div className="p-4 rounded-2xl bg-violet-950/40 border border-violet-500/40 flex items-start gap-3 text-violet-300 text-xs md:text-sm animate-in fade-in duration-300">
-          <CheckCircle2 className="w-5 h-5 text-violet-400 shrink-0 mt-0.5" />
-          <div className="font-medium leading-relaxed">{runMessage}</div>
+      {/* Jackpot-Only Reward Shaping Rules Bar */}
+      <div className="bg-slate-850/90 border border-amber-500/25 rounded-2xl p-4 flex flex-col lg:flex-row lg:items-center justify-between gap-3 text-xs">
+        <div className="flex items-center gap-2 text-amber-300 font-bold shrink-0">
+          <Trophy className="w-4 h-4 text-amber-400" />
+          <span>Hàm Mục Tiêu Săn Độc Đắc (Jackpot-Only Reward Shaping):</span>
         </div>
-      )}
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="px-2.5 py-1 rounded-lg bg-amber-500/20 border border-amber-400/40 text-amber-300 font-bold">
+            🎯 Độc Đắc (6/6): +10,000 pts
+          </span>
+          {gameCode === "power_6_55" && (
+            <span className="px-2.5 py-1 rounded-lg bg-yellow-500/15 border border-yellow-400/30 text-yellow-300 font-bold">
+              ⚡ Jackpot 2 (5+1): +5,000 pts
+            </span>
+          )}
+          <span className="px-2.5 py-1 rounded-lg bg-sky-500/10 border border-sky-500/25 text-sky-300 font-semibold">
+            Giải Nhất/Nhì/Ba (5-3 số): Phạt nhẹ (-2 / -5 / -10 pts) → Tinh chỉnh hẹp
+          </span>
+          <span className="px-2.5 py-1 rounded-lg bg-rose-500/10 border border-rose-500/25 text-rose-300 font-semibold">
+            Trượt (0-2 số): Phạt nặng (-25 / -50 pts) → Xoay trục mạnh
+          </span>
+        </div>
+      </div>
 
       {/* Grid: Adaptive Dynamic Weights & Multi-Armed Bandit Metrics */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -185,14 +169,16 @@ export const HybridLearningDashboard: React.FC<HybridLearningProps> = ({
         {/* Bandit Reward & Accuracy */}
         <div className="bg-slate-800/40 border border-slate-800 rounded-2xl p-4 space-y-2">
           <div className="flex justify-between items-center text-xs">
-            <span className="text-slate-400 font-semibold">Điểm Thưởng Bandit</span>
-            <span className="font-mono font-bold text-emerald-400 text-sm">+{Math.round(statusData.bandit_cumulative_reward)} pts</span>
+            <span className="text-slate-400 font-semibold">Điểm Jackpot-RL</span>
+            <span className={`font-mono font-bold text-sm ${banditReward >= 0 ? "text-emerald-400" : "text-amber-400"}`}>
+              {banditReward >= 0 ? `+${banditReward}` : banditReward} pts
+            </span>
           </div>
           <div className="flex justify-between items-center text-[11px] text-slate-400 pt-1">
             <span>Chu kỳ đã học: <b className="text-white">{statusData.total_cycles_learned}</b></span>
-            <span>Độ chính xác: <b className="text-emerald-400">{statusData.recent_accuracy_rate}%</b></span>
+            <span>Độ khớp: <b className="text-emerald-400">{statusData.recent_accuracy_rate}%</b></span>
           </div>
-          <p className="text-[11px] text-slate-500">Thuật toán Agent tăng cường tích lũy qua các kỳ đối soát.</p>
+          <p className="text-[11px] text-slate-500">Thưởng lớn khi nổ Jackpot, phạt bậc thang để dẫn hướng hội tụ.</p>
         </div>
       </div>
 
@@ -253,15 +239,15 @@ export const HybridLearningDashboard: React.FC<HybridLearningProps> = ({
 
                       {/* Power 6/55 Special Number Ball */}
                       {forecast.special_number && (
-                        <>
-                          <span className="text-amber-500 font-bold text-xs">+</span>
+                        <div className="flex items-center gap-1.5 pl-1">
+                          <span className="text-amber-500 font-extrabold text-xs">+</span>
                           <span
-                            className="w-9 h-9 rounded-full ball-gold text-slate-950 font-black text-sm flex items-center justify-center shadow-md ring-2 ring-amber-400"
-                            title="Bóng Đặc Biệt Jackpot 2"
+                            className="w-9 h-9 rounded-full bg-amber-500/20 border-2 border-amber-400 text-amber-300 font-black text-sm flex items-center justify-center shadow-md shadow-amber-500/20"
+                            title="Bóng Đặc Biệt Jackpot 2 (Được chấm điểm theo Trọng số AI)"
                           >
                             {forecast.special_number < 10 ? `0${forecast.special_number}` : forecast.special_number}
                           </span>
-                        </>
+                        </div>
                       )}
                     </div>
                   </div>

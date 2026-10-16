@@ -85,15 +85,87 @@ async def recalibrate_hybrid_learning(
     gauss_optimal = (140 <= sum_val <= 185) if is_power else (120 <= sum_val <= 160)
     parity_optimal = even_count in (2, 3, 4)
 
-    # 2. Gradient delta adjustments (Bayesian dynamic update)
-    delta_hot = (hot_matches - 2.0) * 0.03
-    delta_late = (late_matches - 2.0) * 0.04
-    delta_gauss = 0.03 if gauss_optimal else -0.02
-    delta_parity = 0.02 if parity_optimal else -0.02
+    # 2. Multi-Armed Bandit Jackpot-Only Reward / Graded Penalty Calculation
+    # Rules:
+    # - Jackpot 1 (6/6): +10,000 pts (Massive Reward)
+    # - Jackpot 2 (5/6 + Special): +5,000 pts (High Reward)
+    # - First Prize (5/6): -2 pts (Tiny Penalty - very close to Jackpot)
+    # - Second Prize (4/6): -5 pts (Small Penalty)
+    # - Third Prize (3/6): -10 pts (Moderate Penalty)
+    # - 2 matches: -25 pts (Heavy Penalty)
+    # - 0-1 matches: -50 pts (Severe Penalty - force exploration pivot)
+    cycle_reward = 0.0
+    highest_match = 0
+    hit_jackpot_2 = False
 
-    new_w_hot = max(0.10, min(0.50, state.w_hot + delta_hot))
+    if evaluated_tickets:
+        for t in evaluated_tickets:
+            if t.matched_results:
+                best_match = t.matched_results.get("best_match_count", 0)
+                if best_match > highest_match:
+                    highest_match = best_match
+
+                rows_eval = t.matched_results.get("rows_evaluation") or t.matched_results.get("row_evaluations") or []
+                has_jp2 = any(r.get("match_count") == 5 and r.get("matched_special") for r in rows_eval)
+                if has_jp2:
+                    hit_jackpot_2 = True
+
+                if best_match == 6:
+                    cycle_reward += 10000.0
+                elif has_jp2:
+                    cycle_reward += 5000.0
+                elif best_match == 5:
+                    cycle_reward -= 2.0
+                elif best_match == 4:
+                    cycle_reward -= 5.0
+                elif best_match == 3:
+                    cycle_reward -= 10.0
+                elif best_match == 2:
+                    cycle_reward -= 25.0
+                else:
+                    cycle_reward -= 50.0
+    else:
+        overlap_est = max(hot_matches, late_matches)
+        highest_match = overlap_est
+        if overlap_est == 6:
+            cycle_reward = 10000.0
+        elif overlap_est == 5:
+            cycle_reward = -2.0
+        elif overlap_est == 4:
+            cycle_reward = -5.0
+        elif overlap_est == 3:
+            cycle_reward = -10.0
+        elif overlap_est == 2:
+            cycle_reward = -25.0
+        else:
+            cycle_reward = -50.0
+
+    # Adaptive Learning Rate / Exploration Temperature based on Penalty Tier
+    if highest_match >= 6 or hit_jackpot_2:
+        lr_multiplier = 0.2
+        policy_action = "Khóa hội tụ Độc Đắc (Exploit tối đa)"
+    elif highest_match >= 4:
+        lr_multiplier = 0.5
+        policy_action = "Tinh chỉnh hẹp (Sát nút Độc Đắc - Phạt nhẹ)"
+    elif highest_match == 3:
+        lr_multiplier = 1.0
+        policy_action = "Cân bằng hội tụ (Phạt vừa - Giữ hướng)"
+    elif highest_match == 2:
+        lr_multiplier = 1.5
+        policy_action = "Xoay trục vừa (Phạt nhiều - Mở rộng vùng số)"
+    else:
+        lr_multiplier = 2.0
+        policy_action = "Đột biến mạnh (Phạt nặng - Thoát vùng số chết)"
+
+    # 3. Gradient delta adjustments (Bayesian dynamic update scaled by lr_multiplier)
+    delta_hot = (hot_matches - 2.0) * 0.03 * lr_multiplier
+    delta_late = (late_matches - 2.0) * 0.04 * lr_multiplier
+    delta_gauss = (0.03 if gauss_optimal else -0.02) * lr_multiplier
+    delta_parity = (0.02 if parity_optimal else -0.02) * lr_multiplier
+
+    new_w_hot = max(0.10, min(0.55, state.w_hot + delta_hot))
     new_w_late = max(0.15, min(0.60, state.w_lateness + delta_late))
-    new_w_gauss = max(0.10, min(0.40, state.w_gauss_sum + delta_gauss))
+    new_w_gauss = max(0.10, min(0.45, state.w_gauss_sum + delta_gauss))
     new_w_parity = max(0.05, min(0.30, state.w_parity + delta_parity))
 
     # Normalize weights so sum == 1.0
@@ -102,23 +174,6 @@ async def recalibrate_hybrid_learning(
     state.w_lateness = round(new_w_late / total_w, 3)
     state.w_gauss_sum = round(new_w_gauss / total_w, 3)
     state.w_parity = round(1.0 - (state.w_hot + state.w_lateness + state.w_gauss_sum), 3)
-
-    # 3. Multi-Armed Bandit Reward Calculation
-    cycle_reward = 0.0
-    for t in evaluated_tickets:
-        if t.matched_results:
-            prize = t.matched_results.get("total_prize_vnd", 0)
-            best_match = t.matched_results.get("best_match_count", 0)
-            if best_match == 6:
-                cycle_reward += 5000.0
-            elif best_match == 5:
-                cycle_reward += 500.0
-            elif best_match == 4:
-                cycle_reward += 80.0
-            elif best_match == 3:
-                cycle_reward += 20.0
-            else:
-                cycle_reward += max(0.0, best_match * 2.0)
 
     state.bandit_cumulative_reward = round(state.bandit_cumulative_reward + cycle_reward, 1)
     state.total_cycles_learned += 1
@@ -130,16 +185,19 @@ async def recalibrate_hybrid_learning(
         avg_matches = sum(t.matched_results.get("best_match_count", 0) for t in evaluated_tickets if t.matched_results) / len(evaluated_tickets)
         state.recent_accuracy_rate = round(min(98.0, 50.0 + avg_matches * 12.0), 1)
 
+    reward_str = f"+{int(cycle_reward)}" if cycle_reward >= 0 else f"{int(cycle_reward)}"
     log_entry = {
         "timestamp": datetime.utcnow().isoformat(),
         "draw_period": actual_draw.draw_period,
         "draw_date": actual_draw.draw_date,
         "winning_numbers": actual_draw.winning_numbers,
+        "policy_action": policy_action,
+        "cycle_reward": cycle_reward,
         "feedback_summary": (
-            f"Kỳ #{actual_draw.draw_period}: Có {late_matches}/6 số trễ, {hot_matches}/6 số hot. "
-            + (f"Tổng {sum_val} nằm đúng vùng Gauss. " if gauss_optimal else f"Tổng {sum_val} lệch nhẹ. ")
-            + f"Cập nhật trọng số mới: Trễ {int(state.w_lateness*100)}%, Hot {int(state.w_hot*100)}%, Gauss {int(state.w_gauss_sum*100)}%. "
-            + f"Thưởng Bandit +{int(cycle_reward)} pts."
+            f"Kỳ #{actual_draw.draw_period} [Săn Độc Đắc]: Đạt đỉnh {highest_match}/6 số → {policy_action}. "
+            + f"Có {late_matches}/6 số trễ, {hot_matches}/6 số hot. "
+            + f"Trọng số mới: Trễ {int(state.w_lateness*100)}%, Hot {int(state.w_hot*100)}%, Gauss {int(state.w_gauss_sum*100)}%. "
+            + f"Điểm Jackpot-RL: {reward_str} pts."
         ),
         "weights": {
             "lateness": state.w_lateness,
@@ -159,6 +217,8 @@ async def recalibrate_hybrid_learning(
 
     return {
         "cycle_learned": state.total_cycles_learned,
+        "policy_action": policy_action,
+        "cycle_reward": cycle_reward,
         "updated_weights": {
             "w_lateness": state.w_lateness,
             "w_hot": state.w_hot,
@@ -171,7 +231,7 @@ async def recalibrate_hybrid_learning(
     }
 
 async def generate_hybrid_ticket_rows(db: AsyncSession, game_code: str) -> List[List[int]]:
-    """Generate 5 optimal rows for next upcoming draw using dynamically learned weights and Bandit policy."""
+    """Generate 5 optimal rows for next upcoming draw using dynamically learned weights and Jackpot Structural Filter."""
     state = await get_or_create_learning_state(db, game_code)
     game_res = await db.execute(select(LotteryGame).where(LotteryGame.code == game_code))
     game = game_res.scalar_one_or_none()
@@ -197,41 +257,59 @@ async def generate_hybrid_ticket_rows(db: AsyncSession, game_code: str) -> List[
     for n in range(1, max_num + 1):
         f_norm = (freq_map.get(n, 10.0) / 100.0)
         l_norm = (late_map.get(n, 0) / max(1.0, max_late))
-        # Composite score using adaptive weights
         score = (state.w_hot * f_norm) + (state.w_lateness * l_norm)
         number_scores[n] = score
 
     # Sort numbers by composite potential
     ranked_numbers = sorted(number_scores.keys(), key=lambda n: number_scores[n], reverse=True)
 
-    # Optimal sum target
+    # Optimal sum target for Jackpot bell curve
     target_sum_min, target_sum_max = (140, 185) if is_power else (120, 160)
 
     generated_rows: List[List[int]] = []
-    # Generate 5 diverse and balanced rows (Exploration + Exploitation)
+    # Generate 5 diverse and structurally optimal rows targeting 6-tuple Jackpot
     for row_idx in range(5):
         best_candidate: List[int] = []
         best_diff = 999
 
-        # Generate candidates using top pool with slight random exploration
-        for _ in range(50):
-            # Select 4 exploitation numbers (from top 18) + 2 exploration numbers (from broader pool)
-            top_pool = ranked_numbers[:18]
-            broad_pool = ranked_numbers[18:max_num]
+        for _ in range(80):
+            if row_idx < 2:
+                # Rows A & B: High Exploitation around top Bayesian + Gauss candidates
+                top_pool = ranked_numbers[:16]
+                broad_pool = ranked_numbers[16:max_num]
+                chosen_top = random.sample(top_pool, 4)
+                chosen_broad = random.sample(broad_pool, 2)
+            elif row_idx == 2:
+                # Row C: Deep Lateness Reversion Hunter
+                late_ranked = sorted(range(1, max_num + 1), key=lambda x: late_map.get(x, 0), reverse=True)
+                chosen_top = random.sample(late_ranked[:14], 3)
+                rem = [x for x in ranked_numbers[:22] if x not in chosen_top]
+                chosen_broad = random.sample(rem, 3)
+            else:
+                # Rows D & E: Multi-Decade Bandit Exploration
+                chosen_top = random.sample(ranked_numbers[:22], 3)
+                rem = [x for x in range(1, max_num + 1) if x not in chosen_top]
+                chosen_broad = random.sample(rem, 3)
 
-            chosen_top = random.sample(top_pool, 4)
-            chosen_broad = random.sample(broad_pool, 2)
             candidate = sorted(chosen_top + chosen_broad)
+            if len(set(candidate)) != 6 or candidate in generated_rows:
+                continue
 
             c_sum = sum(candidate)
             c_even = sum(1 for n in candidate if n % 2 == 0)
+            decades = len(set(n // 10 for n in candidate))
+            span = candidate[-1] - candidate[0]
 
-            # Preference: sum within target, even count 2, 3 or 4
-            if target_sum_min <= c_sum <= target_sum_max and c_even in (2, 3, 4):
+            # Strict Jackpot Structural Filter:
+            # 1. Sum inside Gaussian bell curve
+            # 2. Parity 2:4, 3:3, or 4:2
+            # 3. Spread across >= 4 decades
+            # 4. Span >= 25
+            if target_sum_min <= c_sum <= target_sum_max and c_even in (2, 3, 4) and decades >= 4 and span >= 25:
                 best_candidate = candidate
                 break
             else:
-                diff = abs(c_sum - ((target_sum_min + target_sum_max) // 2))
+                diff = abs(c_sum - ((target_sum_min + target_sum_max) // 2)) + (0 if decades >= 4 else 15)
                 if diff < best_diff:
                     best_diff = diff
                     best_candidate = candidate
@@ -244,18 +322,57 @@ async def generate_hybrid_ticket_rows(db: AsyncSession, game_code: str) -> List[
     return generated_rows
 
 async def generate_hybrid_ticket_rows_with_special(db: AsyncSession, game_code: str) -> Tuple[List[List[int]], List[Optional[int]]]:
-    """Generate 5 optimal rows + 5 corresponding special numbers (for Power 6/55) or None."""
+    """Generate 5 optimal rows + 5 corresponding scored special numbers (for Power 6/55 Jackpot 2 hunting) or None."""
     rows = await generate_hybrid_ticket_rows(db, game_code)
     is_power = game_code == "power_6_55"
     if not is_power:
         return rows, [None] * len(rows)
 
+    state = await get_or_create_learning_state(db, game_code)
+    game_res = await db.execute(select(LotteryGame).where(LotteryGame.code == game_code))
+    game = game_res.scalar_one_or_none()
+
+    draws_res = await db.execute(
+        select(DrawResult).where(DrawResult.game_id == game.id).order_by(DrawResult.id.desc()).limit(50)
+    )
+    draws = draws_res.scalars().all()
+    history = [{"draw_period": d.draw_period, "winning_numbers": d.winning_numbers} for d in reversed(draws)]
+
+    hot_cold = calculate_hot_cold(history, max_number=55)
+    freq_map = {item["number"]: item["percentage"] for item in hot_cold["hot_numbers"] + hot_cold["cold_numbers"]}
+    lateness = calculate_lateness(history, max_number=55)
+    late_map = {item["number"]: item["current_gap"] for item in lateness.get("items", [])}
+    max_late = max(late_map.values()) if late_map else 1
+
+    # Score candidate special balls using composite Bayesian weights
+    sp_scores: Dict[int, float] = {}
+    for n in range(1, 56):
+        f_norm = (freq_map.get(n, 10.0) / 100.0)
+        l_norm = (late_map.get(n, 0) / max(1.0, max_late))
+        sp_scores[n] = (state.w_hot * f_norm) + (state.w_lateness * l_norm)
+
     special_numbers: List[Optional[int]] = []
-    # Query hot/lateness for special number prediction
-    for r in rows:
-        remaining_pool = [n for n in range(1, 56) if n not in r]
-        # Choose a high-potential special number
-        special_numbers.append(random.choice(remaining_pool))
+    used_specials = set()
+
+    for r_idx, r in enumerate(rows):
+        remaining_pool = [n for n in range(1, 56) if n not in r and n not in used_specials]
+        if not remaining_pool:
+            remaining_pool = [n for n in range(1, 56) if n not in r]
+
+        ranked_sp = sorted(remaining_pool, key=lambda n: sp_scores.get(n, 0.0), reverse=True)
+        if r_idx < 2:
+            # Top Bayesian scored special ball
+            chosen_sp = random.choice(ranked_sp[:4])
+        elif r_idx == 2:
+            # Most overdue special ball
+            late_sp = sorted(remaining_pool, key=lambda n: late_map.get(n, 0), reverse=True)
+            chosen_sp = random.choice(late_sp[:4])
+        else:
+            # Bandit exploration among top 12
+            chosen_sp = random.choice(ranked_sp[:12])
+
+        used_specials.add(chosen_sp)
+        special_numbers.append(chosen_sp)
 
     return rows, special_numbers
 
