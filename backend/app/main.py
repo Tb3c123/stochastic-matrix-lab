@@ -16,13 +16,15 @@ async def lifespan(app: FastAPI):
     # Initialize DB & seed default games on startup
     await init_db()
     
-    # Auto-seed initial historical draws if empty on startup
+    # Auto-seed initial historical draws and 50-day walk-forward simulation if empty on startup
     try:
         from app.database import AsyncSessionLocal
         from sqlalchemy import select, func
         from app.models.game import LotteryGame
         from app.models.draw import DrawResult
+        from app.models.ticket import SavedTicket
         from app.crawler.manager import CrawlerManager
+        from app.analytics.simulation import run_walk_forward_simulation
 
         async with AsyncSessionLocal() as session:
             manager = CrawlerManager(session)
@@ -33,8 +35,12 @@ async def lifespan(app: FastAPI):
                     cnt_res = await session.execute(
                         select(func.count(DrawResult.id)).where(DrawResult.game_id == g_obj.id)
                     )
-                    if (cnt_res.scalar() or 0) < 15:
-                        await manager.seed_historical_data(g_code, limit=30)
+                    if (cnt_res.scalar() or 0) < 40:
+                        await manager.seed_historical_data(g_code, limit=100)
+
+            ticket_cnt_res = await session.execute(select(func.count(SavedTicket.id)))
+            if (ticket_cnt_res.scalar() or 0) == 0:
+                await run_walk_forward_simulation(session, days_back=50, reset_existing=False)
     except Exception:
         pass
 

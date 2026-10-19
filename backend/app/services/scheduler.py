@@ -56,7 +56,7 @@ async def auto_cycle_worker():
                                 game = g_res.scalar_one_or_none()
                                 if game:
                                     d_res = await session.execute(
-                                        select(DrawResult).where(DrawResult.game_id == game.id).order_by(DrawResult.id.desc()).limit(1)
+                                        select(DrawResult).where(DrawResult.game_id == game.id).order_by(DrawResult.draw_period.desc()).limit(1)
                                     )
                                     latest = d_res.scalar_one_or_none()
                                     if latest and latest.draw_date == today_str:
