@@ -213,8 +213,8 @@ async def recalibrate_hybrid_learning(
     prev_draws_res = await db.execute(
         select(DrawResult).where(
             DrawResult.game_id == actual_draw.game_id,
-            DrawResult.id < actual_draw.id
-        ).order_by(DrawResult.id.desc()).limit(50)
+            DrawResult.draw_period < actual_draw.draw_period
+        ).order_by(DrawResult.draw_period.desc()).limit(50)
     )
     history = [{"draw_period": d.draw_period, "winning_numbers": d.winning_numbers} for d in reversed(prev_draws_res.scalars().all())]
 
@@ -369,7 +369,7 @@ async def generate_hybrid_ticket_rows(
     is_power = game_code == "power_6_55"
 
     draws_res = await db.execute(
-        select(DrawResult).where(DrawResult.game_id == game.id).order_by(DrawResult.id.desc()).limit(50)
+        select(DrawResult).where(DrawResult.game_id == game.id).order_by(DrawResult.draw_period.desc()).limit(50)
     )
     draws = draws_res.scalars().all()
     history = [{"draw_period": d.draw_period, "winning_numbers": d.winning_numbers} for d in reversed(draws)]
@@ -502,7 +502,7 @@ async def generate_hybrid_ticket_rows_with_special(
     game = game_res.scalar_one_or_none()
 
     draws_res = await db.execute(
-        select(DrawResult).where(DrawResult.game_id == game.id).order_by(DrawResult.id.desc()).limit(50)
+        select(DrawResult).where(DrawResult.game_id == game.id).order_by(DrawResult.draw_period.desc()).limit(50)
     )
     draws = draws_res.scalars().all()
     history = [{"draw_period": d.draw_period, "winning_numbers": d.winning_numbers} for d in reversed(draws)]
@@ -555,7 +555,7 @@ async def execute_auto_cycle_pipeline(db: AsyncSession, game_code: str) -> Dict[
         return {"success": False, "error": f"Game {game_code} not found"}
 
     latest_res = await db.execute(
-        select(DrawResult).where(DrawResult.game_id == game.id).order_by(DrawResult.id.desc()).limit(1)
+        select(DrawResult).where(DrawResult.game_id == game.id).order_by(DrawResult.draw_period.desc()).limit(1)
     )
     latest_draw = latest_res.scalar_one_or_none()
     if not latest_draw:

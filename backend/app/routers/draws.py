@@ -28,7 +28,7 @@ async def get_latest_draw(
     result = await db.execute(
         select(DrawResult)
         .where(DrawResult.game_id == game.id)
-        .order_by(DrawResult.id.desc())
+        .order_by(DrawResult.draw_period.desc())
         .limit(1)
     )
     latest_draw = result.scalar_one_or_none()
@@ -51,7 +51,7 @@ async def get_latest_draw(
         result = await db.execute(
             select(DrawResult)
             .where(DrawResult.game_id == game.id)
-            .order_by(DrawResult.id.desc())
+            .order_by(DrawResult.draw_period.desc())
             .limit(1)
         )
         latest_draw = result.scalar_one_or_none()
@@ -124,7 +124,7 @@ async def list_draws(
     results = await db.execute(
         select(DrawResult)
         .where(DrawResult.game_id == game.id)
-        .order_by(DrawResult.id.desc())
+        .order_by(DrawResult.draw_period.desc())
         .offset(offset)
         .limit(limit)
     )

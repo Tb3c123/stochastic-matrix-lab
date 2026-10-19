@@ -389,7 +389,7 @@ async def run_walk_forward_simulation(
             await db.commit()
 
         all_draws_res = await db.execute(
-            select(DrawResult).where(DrawResult.game_id == game.id).order_by(DrawResult.id.asc())
+            select(DrawResult).where(DrawResult.game_id == game.id).order_by(DrawResult.draw_period.asc())
         )
         all_draws = all_draws_res.scalars().all()
         if len(all_draws) < 40:
@@ -397,12 +397,15 @@ async def run_walk_forward_simulation(
             manager = CrawlerManager(db)
             await manager.seed_historical_data(game_code, limit=100)
             all_draws_res = await db.execute(
-                select(DrawResult).where(DrawResult.game_id == game.id).order_by(DrawResult.id.asc())
+                select(DrawResult).where(DrawResult.game_id == game.id).order_by(DrawResult.draw_period.asc())
             )
             all_draws = all_draws_res.scalars().all()
 
         if len(all_draws) < 12:
             continue
+
+        # Ensure strict chronological sort by (draw_date, draw_period)
+        all_draws = sorted(all_draws, key=lambda d: (d.draw_date, d.draw_period))
 
         # Filter draws within `days_back` window relative to the latest draw date
         try:
@@ -418,7 +421,7 @@ async def run_walk_forward_simulation(
 
         for target_draw in recent_draws:
             # 1. Strict walk-forward: only use history draws PRIOR to this target draw
-            history_draws_obj = [d for d in all_draws if d.id < target_draw.id]
+            history_draws_obj = [d for d in all_draws if d.draw_period < target_draw.draw_period]
             if len(history_draws_obj) < 8:
                 continue
 

@@ -18,7 +18,7 @@ async def get_draws_data(db: AsyncSession, game_code: str, window_size: int = 10
     if not game:
         return None, []
 
-    query = select(DrawResult).where(DrawResult.game_id == game.id).order_by(DrawResult.id.desc())
+    query = select(DrawResult).where(DrawResult.game_id == game.id).order_by(DrawResult.draw_period.desc())
     if window_size > 0:
         query = query.limit(window_size)
 

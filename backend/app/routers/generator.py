@@ -24,7 +24,7 @@ async def smart_pick(
 
     # Fetch last 100 draws for context
     draws_res = await db.execute(
-        select(DrawResult).where(DrawResult.game_id == game.id).order_by(DrawResult.id.desc()).limit(100)
+        select(DrawResult).where(DrawResult.game_id == game.id).order_by(DrawResult.draw_period.desc()).limit(100)
     )
     draws = draws_res.scalars().all()
     history = [{"draw_period": d.draw_period, "winning_numbers": d.winning_numbers} for d in reversed(draws)]
@@ -50,7 +50,7 @@ async def backtest(
         return ResponseEnvelope(success=False, error=ErrorDetail(code="NOT_FOUND", message=f"Game {payload.game_code} not found"))
 
     draws_res = await db.execute(
-        select(DrawResult).where(DrawResult.game_id == game.id).order_by(DrawResult.id.desc()).limit(payload.window_size)
+        select(DrawResult).where(DrawResult.game_id == game.id).order_by(DrawResult.draw_period.desc()).limit(payload.window_size)
     )
     draws = draws_res.scalars().all()
     history = [{"draw_period": d.draw_period, "winning_numbers": d.winning_numbers} for d in draws]

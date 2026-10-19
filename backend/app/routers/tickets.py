@@ -275,7 +275,7 @@ async def save_ticket(
 
     # Get latest draw to determine target draw period and date
     latest_res = await db.execute(
-        select(DrawResult).where(DrawResult.game_id == game.id).order_by(DrawResult.id.desc()).limit(1)
+        select(DrawResult).where(DrawResult.game_id == game.id).order_by(DrawResult.draw_period.desc()).limit(1)
     )
     latest_draw = latest_res.scalar_one_or_none()
     
@@ -603,7 +603,7 @@ async def get_upcoming_draw(
         return ResponseEnvelope(success=False, error=ErrorDetail(code="NOT_FOUND", message=f"Game {game_code} not found"))
 
     latest_res = await db.execute(
-        select(DrawResult).where(DrawResult.game_id == game.id).order_by(DrawResult.id.desc()).limit(1)
+        select(DrawResult).where(DrawResult.game_id == game.id).order_by(DrawResult.draw_period.desc()).limit(1)
     )
     latest_draw = latest_res.scalar_one_or_none()
 
