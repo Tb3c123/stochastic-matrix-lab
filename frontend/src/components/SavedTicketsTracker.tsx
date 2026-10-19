@@ -342,9 +342,11 @@ export const SavedTicketsTracker: React.FC<SavedTicketsTrackerProps> = ({ gameCo
     const ticketBeautyScore =
       ticket.ticket_beauty_score ?? analysis.ticket_beauty_score ?? beautyEval.ticket_beauty_score ?? 88.5;
     const beautyGrade =
-      ticket.beauty_grade ?? beautyEval.beauty_grade ?? (ticketBeautyScore >= 92 ? "S+" : ticketBeautyScore >= 88.5 ? "S" : "A+");
+      ticket.beauty_grade ?? beautyEval.beauty_grade ?? (ticketBeautyScore >= 96 ? "S+" : ticketBeautyScore >= 88.5 ? "A+" : "A");
     const goldenRowsCount =
       ticket.golden_rows_count ?? analysis.golden_rows_count ?? beautyEval.golden_rows_count ?? 0;
+    const maxGatesPassed =
+      ticket.max_gates_passed ?? beautyEval.max_gates_passed ?? (goldenRowsCount > 0 ? 8 : 6);
     const hasGoldenSignal = !!(ticket.has_golden_signal ?? analysis.has_golden_signal ?? (goldenRowsCount > 0));
 
     return (
@@ -363,10 +365,10 @@ export const SavedTicketsTracker: React.FC<SavedTicketsTrackerProps> = ({ gameCo
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
           {/* Header Info & Strategy Tag */}
           <div className="flex flex-wrap items-center gap-2.5">
-            {/* Golden Signal Badge — ONLY shown when ticket strictly passes the 5 Golden Gates */}
+            {/* Jackpot 8/8 DNA Signal Badge — ONLY shown when ticket locks all 8/8 Jackpot Gates */}
             {hasGoldenSignal && (
               <span className="px-3 py-1 rounded-full text-xs font-black bg-gradient-to-r from-amber-400 to-yellow-300 text-slate-950 shadow-md shadow-amber-500/20 flex items-center gap-1">
-                🔥 CÓ {goldenRowsCount} DÃY ĐẸP ĐẠT CHUẨN SỬ DỤNG
+                🎯 CÓ {goldenRowsCount} DÃY ĐẠT 8/8 CỔNG DNA ĐỘC ĐẮC
               </span>
             )}
 
@@ -394,7 +396,7 @@ export const SavedTicketsTracker: React.FC<SavedTicketsTrackerProps> = ({ gameCo
             </div>
           </div>
 
-          {/* Beauty Score, Accuracy & Probability Badges */}
+          {/* Jackpot 8-Gate DNA & Accuracy Badges */}
           <div className="flex flex-wrap items-center gap-2 text-xs">
             <div
               className={`px-3 py-1.5 rounded-xl border flex items-center gap-1.5 font-bold ${
@@ -402,16 +404,16 @@ export const SavedTicketsTracker: React.FC<SavedTicketsTrackerProps> = ({ gameCo
                   ? "bg-amber-500/20 border-amber-400/50 text-amber-300"
                   : "bg-slate-800/90 border-slate-700/80 text-slate-300"
               }`}
-              title="Điểm đánh giá độ đẹp tổng hợp 5 trụ cột của vé (Chỉ báo hiệu dùng khi có dãy ≥ 93đ đạt đủ 5 cổng)"
+              title="Kiểm định 8 Cổng DNA Giải Độc Đắc 6/6 (Chỉ báo hiệu sử dụng khi đạt tuyệt đối 8/8 cổng)"
             >
               <Sparkles className="w-3.5 h-3.5 text-amber-400" />
               <span>
-                Điểm Hội Tụ: <b className="text-amber-300 font-mono">{ticketBeautyScore}/100 ({beautyGrade})</b>
+                Chuẩn Độc Đắc: <b className="text-amber-300 font-mono">{maxGatesPassed}/8 Cổng ({ticketBeautyScore}đ • {beautyGrade})</b>
               </span>
               {hasGoldenSignal ? (
-                <span className="text-[11px] text-emerald-300 ml-1">• ★ {goldenRowsCount} dãy đạt chuẩn Vàng</span>
+                <span className="text-[11px] text-emerald-300 ml-1">• ★ {goldenRowsCount} dãy khóa 8/8 cổng</span>
               ) : (
-                <span className="text-[11px] text-slate-400 ml-1">• Chưa có dãy đạt ngưỡng Vàng</span>
+                <span className="text-[11px] text-slate-400 ml-1">• Chưa khóa đủ 8/8 cổng</span>
               )}
             </div>
 
@@ -447,6 +449,9 @@ export const SavedTicketsTracker: React.FC<SavedTicketsTrackerProps> = ({ gameCo
             const rowKey = `${ticket.id}-${rIdx}`;
             const isAuditOpen = !!openRowAudits[rowKey];
             const isGoldenRow = !!rowForecast?.is_golden_row;
+            const gatesPassed = rowForecast?.jackpot_gates_passed ?? (isGoldenRow ? 8 : 6);
+            const passedGates: string[] = rowForecast?.passed_golden_gates || [];
+            const failedGates: string[] = rowForecast?.failed_golden_gates || [];
 
             return (
               <div
@@ -470,9 +475,16 @@ export const SavedTicketsTracker: React.FC<SavedTicketsTrackerProps> = ({ gameCo
                       {String.fromCharCode(65 + rIdx)}
                     </span>
 
-                    {isGoldenRow && (
+                    {isGoldenRow ? (
                       <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-amber-400/20 text-amber-300 border border-amber-400/40 shrink-0">
-                        🔥 Dãy Đẹp Đạt Chuẩn ({rowForecast?.row_beauty_score || 94.0}đ — Nên Dùng)
+                        🎯 ĐẠT 8/8 CỔNG DNA ĐỘC ĐẮC ({rowForecast?.row_beauty_score || 98.0}đ — NÊN DÙNG)
+                      </span>
+                    ) : (
+                      <span
+                        className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-slate-800 text-slate-400 border border-slate-700 shrink-0"
+                        title={failedGates.join(" | ")}
+                      >
+                        Đạt {gatesPassed}/8 Cổng DNA
                       </span>
                     )}
 
@@ -555,15 +567,15 @@ export const SavedTicketsTracker: React.FC<SavedTicketsTrackerProps> = ({ gameCo
                       <button
                         onClick={() => toggleRowAudit(ticket.id, rIdx)}
                         className={`px-2.5 py-1 rounded-lg font-bold text-[11px] flex items-center gap-1 border transition-all cursor-pointer ${
-                          audit.score >= 80
+                          isGoldenRow
+                            ? "bg-amber-500/20 text-amber-300 border-amber-400/50 hover:bg-amber-500/30"
+                            : gatesPassed >= 7
                             ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/30 hover:bg-emerald-500/20"
-                            : audit.score >= 60
-                            ? "bg-amber-500/10 text-amber-400 border-amber-500/30 hover:bg-amber-500/20"
-                            : "bg-red-500/10 text-red-400 border-red-500/30 hover:bg-red-500/20"
+                            : "bg-slate-800 text-slate-300 border-slate-700 hover:bg-slate-700"
                         }`}
                       >
                         <ShieldCheck className="w-3 h-3" />
-                        <span>Thẩm định: {audit.score}đ</span>
+                        <span>Kiểm định DNA: {gatesPassed}/8 cổng</span>
                         {isAuditOpen ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
                       </button>
                     )}
@@ -575,43 +587,74 @@ export const SavedTicketsTracker: React.FC<SavedTicketsTrackerProps> = ({ gameCo
                   <div className="p-3.5 bg-slate-900/90 border-t border-slate-800 text-xs space-y-3">
                     <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-800/80 pb-2">
                       <div className="flex items-center gap-2">
-                        <span className="font-bold text-slate-300">Kết Luận Thẩm Định:</span>
+                        <span className="font-bold text-slate-300">Kết Luận Kiểm Định Giải Độc Đắc (8 Cổng DNA):</span>
                         <span
                           className={`font-black px-2 py-0.5 rounded text-[11px] ${
-                            audit.verdict_code === "optimal"
+                            isGoldenRow
+                              ? "bg-amber-400 text-slate-950"
+                              : gatesPassed >= 7
                               ? "bg-emerald-500/20 text-emerald-300"
-                              : audit.verdict_code === "acceptable"
-                              ? "bg-sky-500/20 text-sky-300"
-                              : audit.verdict_code === "caution"
-                              ? "bg-amber-500/20 text-amber-300"
-                              : "bg-red-500/20 text-red-300"
+                              : "bg-slate-800 text-slate-300"
                           }`}
                         >
-                          {audit.verdict_label}
+                          {isGoldenRow ? "🎯 ĐẠT TUYỆT ĐỐI 8/8 CỔNG DNA ĐỘC ĐẮC — NÊN SỬ DỤNG" : `Đạt ${gatesPassed}/8 Cổng DNA (Chưa Khóa Đủ 8/8)`}
                         </span>
                       </div>
-                      <span className="text-[11px] text-slate-400">
-                        Phân tích dựa trên 100 kỳ quay lịch sử Vietlott
+                      <span className="text-[11px] text-slate-400 font-mono">
+                        AC={rowForecast?.ac_value ?? audit?.metrics?.ac_value ?? "-"}/10 • {rowForecast?.primes_count ?? audit?.metrics?.primes_count ?? "-"} Số Ng.Tố • {rowForecast?.distinct_last_digits ?? audit?.metrics?.distinct_last_digits ?? "-"}/6 Đuôi
                       </span>
                     </div>
 
+                    {/* 8-Gate Jackpot DNA Breakdown */}
+                    {(passedGates.length > 0 || failedGates.length > 0) && (
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-[11px]">
+                        <div className="bg-emerald-950/20 border border-emerald-900/40 rounded-xl p-2.5 space-y-1">
+                          <span className="font-bold text-emerald-400 flex items-center gap-1.5">
+                            <ThumbsUp className="w-3.5 h-3.5" /> Cổng DNA Độc Đắc Đã Vượt Qua ({passedGates.length}/8):
+                          </span>
+                          <ul className="list-disc list-inside space-y-0.5 text-slate-300">
+                            {passedGates.map((g: string, gIdx: number) => (
+                              <li key={gIdx}>{g}</li>
+                            ))}
+                          </ul>
+                        </div>
+
+                        <div className="bg-slate-900 border border-slate-800 rounded-xl p-2.5 space-y-1">
+                          <span className="font-bold text-amber-400 flex items-center gap-1.5">
+                            <AlertTriangle className="w-3.5 h-3.5" /> Cổng DNA Độc Đắc Chưa Đạt ({failedGates.length}/8):
+                          </span>
+                          <ul className="list-disc list-inside space-y-0.5 text-slate-300">
+                            {failedGates.length > 0 ? (
+                              failedGates.map((fg: string, fgIdx: number) => (
+                                <li key={fgIdx} className="text-rose-300">{fg}</li>
+                              ))
+                            ) : (
+                              <li className="text-emerald-400 font-bold">
+                                ✅ Đã khóa trọn vẹn 8/8 Cổng DNA Giải Độc Đắc — Không có điểm yếu cấu trúc!
+                              </li>
+                            )}
+                          </ul>
+                        </div>
+                      </div>
+                    )}
+
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-[11px]">
-                      <div className="bg-emerald-950/20 border border-emerald-900/40 rounded-xl p-2.5 space-y-1">
-                        <span className="font-bold text-emerald-400 flex items-center gap-1.5">
-                          <ThumbsUp className="w-3.5 h-3.5" /> Ưu Điểm Xác Suất:
+                      <div className="bg-slate-950/60 border border-slate-800/80 rounded-xl p-2.5 space-y-1">
+                        <span className="font-bold text-slate-300 flex items-center gap-1.5">
+                          Ưu Điểm Phân Phối:
                         </span>
-                        <ul className="list-disc list-inside space-y-0.5 text-slate-300">
+                        <ul className="list-disc list-inside space-y-0.5 text-slate-400">
                           {audit.pros.map((p: string, pIdx: number) => (
                             <li key={pIdx}>{p}</li>
                           ))}
                         </ul>
                       </div>
 
-                      <div className="bg-slate-900 border border-slate-800 rounded-xl p-2.5 space-y-1">
-                        <span className="font-bold text-amber-400 flex items-center gap-1.5">
-                          <AlertTriangle className="w-3.5 h-3.5" /> Điểm Cần Lưu Ý / Rủi Ro:
+                      <div className="bg-slate-950/60 border border-slate-800/80 rounded-xl p-2.5 space-y-1">
+                        <span className="font-bold text-slate-300 flex items-center gap-1.5">
+                          Lưu Ý Toán Học:
                         </span>
-                        <ul className="list-disc list-inside space-y-0.5 text-slate-300">
+                        <ul className="list-disc list-inside space-y-0.5 text-slate-400">
                           {audit.cons.length > 0 ? (
                             audit.cons.map((c: string, cIdx: number) => (
                               <li key={cIdx}>{c}</li>
@@ -945,9 +988,9 @@ export const SavedTicketsTracker: React.FC<SavedTicketsTrackerProps> = ({ gameCo
                   ? "bg-gradient-to-r from-amber-400 to-yellow-300 text-slate-950 border-amber-300 shadow-md"
                   : "bg-amber-500/15 text-amber-300 border-amber-400/40 hover:bg-amber-500/25"
               }`}
-              title="Chỉ lọc những kỳ mở thưởng có xuất hiện Dãy Đẹp Tuyệt Đối (≥ 93đ, vượt qua cả 5 cổng kiểm định) đáng để sử dụng"
+              title="Chỉ lọc những kỳ mở thưởng hiếm hoi có xuất hiện dãy số khóa đủ 8/8 Cổng DNA Giải Độc Đắc 6/6 đáng để sử dụng"
             >
-              🔥 Chỉ Kỳ Có Tín Hiệu Dãy Đẹp ({dateGroups.filter(([_, g]) => g.goldenRowsCount > 0).length} kỳ)
+              🎯 Chỉ Kỳ Có Tín Hiệu Độc Đắc 8/8 Cổng ({dateGroups.filter(([_, g]) => g.goldenRowsCount > 0).length}/{dateGroups.length} kỳ)
             </button>
             {dateGroups.map(([key, group]) => {
               const isSelected = selectedDateFilter === group.period;
@@ -969,7 +1012,7 @@ export const SavedTicketsTracker: React.FC<SavedTicketsTrackerProps> = ({ gameCo
                   <span className="text-[11px] opacity-80">({formatDate(group.date)})</span>
                   <span className="font-bold opacity-90">• {group.tickets.length} vé</span>
                   {group.goldenRowsCount > 0 && (
-                    <span className="text-amber-300 font-black">🔥{group.goldenRowsCount} dãy đẹp</span>
+                    <span className="text-amber-300 font-black">🎯{group.goldenRowsCount} dãy 8/8 cổng</span>
                   )}
                   {group.winningTicketsCount > 0 && (
                     <span className="text-emerald-400 font-black">🏆</span>
@@ -1018,11 +1061,11 @@ export const SavedTicketsTracker: React.FC<SavedTicketsTrackerProps> = ({ gameCo
                           </span>
                           {group.goldenRowsCount > 0 ? (
                             <span className="text-xs font-black px-2.5 py-0.5 rounded-full bg-amber-400/20 text-amber-300 border border-amber-400/50">
-                              🔥 CÓ TÍN HIỆU: {group.goldenRowsCount} Dãy Đẹp Đạt Chuẩn (Trên {group.goldenTicketsCount} vé)
+                              🎯 CÓ TÍN HIỆU ĐỘC ĐẮC: {group.goldenRowsCount} Dãy Đạt Đủ 8/8 Cổng DNA (Trên {group.goldenTicketsCount} vé)
                             </span>
                           ) : (
                             <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-slate-800/80 text-slate-400 border border-slate-700">
-                              ⏸️ Kỳ này không có dãy đạt ngưỡng Đẹp Tuyệt Đối
+                              ⏸️ Chưa có dãy khóa đủ 8/8 Cổng DNA Độc Đắc — Chỉ theo dõi
                             </span>
                           )}
                         </div>

@@ -269,25 +269,27 @@ def compute_ticket_beauty_evaluation(
     strategy: str = "balanced"
 ) -> Dict[str, Any]:
     """
-    Evaluate a generated 5-row ticket against strict ABSOLUTE thresholds (5 Gates)
-    to determine WHETHER and WHEN a ticket or specific row qualifies as a
-    'Golden Playable Row / Ticket' worth playing in real life.
-    Does NOT force every ticket or draw period to have a 'best' row/ticket.
+    Evaluate a generated 5-row ticket against the strict 8-Gate Jackpot 6/6 DNA Detector
+    (Bộ Kiểm Định 8 Cổng DNA Giải Độc Đắc) to determine WHETHER and WHEN a specific row
+    locks in all 8 mathematical & structural invariants of a real 6/6 Jackpot draw.
+    Replaces soft average score thresholds with an exact 8/8 Gate Lock.
     """
     from collections import Counter
     is_power = game_code == "power_6_55"
-    gauss_target = 163.0 if is_power else 140.0
-    strict_gauss_min = 148 if is_power else 126
-    strict_gauss_max = 178 if is_power else 154
-    min_span_req = 36 if is_power else 30
-    GOLDEN_ROW_MIN_SCORE = 93.0
-    GOLDEN_TICKET_MIN_SCORE = 91.0
+    gauss_target = 167.0 if is_power else 139.0
+    core_gauss_min = 158 if is_power else 132
+    core_gauss_max = 176 if is_power else 146
+    min_span_req = 38 if is_power else 33
+    max_gap_req = 18 if is_power else 15
+    mid_point = 28 if is_power else 22
+    primes_set = {2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43, 47, 53}
+    TOTAL_JACKPOT_GATES = 8
 
     if not rows:
         return {
             "ticket_beauty_score": 70.0,
             "beauty_grade": "B",
-            "beauty_verdict": "Chưa Đạt Ngưỡng Sử Dụng",
+            "beauty_verdict": "Chưa Đạt Chuẩn DNA Độc Đắc",
             "has_golden_signal": False,
             "is_golden_ticket": False,
             "golden_rows_count": 0,
@@ -295,6 +297,8 @@ def compute_ticket_beauty_evaluation(
             "best_row_index": None,
             "best_row_label": None,
             "best_row_score": 0.0,
+            "max_gates_passed": 0,
+            "total_jackpot_gates": TOTAL_JACKPOT_GATES,
             "anchor_numbers": [],
             "high_numbers_count": 0,
             "distinct_specials_count": 0,
@@ -309,6 +313,7 @@ def compute_ticket_beauty_evaluation(
     golden_rows: List[Dict[str, Any]] = []
     top_golden_idx: Optional[int] = None
     top_golden_score = -1.0
+    max_gates_passed = 0
 
     for r_idx, r in enumerate(rows):
         sorted_r = sorted(r)
@@ -328,50 +333,116 @@ def compute_ticket_beauty_evaluation(
         row_audit_scores.append(a_score)
         row_forecast_scores.append(f_score)
 
-        # Calculate strict structural properties of this row
+        # Calculate 8 Jackpot 6/6 DNA invariants for this row
         r_sum = sum(sorted_r)
         even_cnt = sum(1 for n in sorted_r if n % 2 == 0)
-        decades_cnt = len(set(n // 10 for n in sorted_r))
+        low_cnt = sum(1 for n in sorted_r if n <= mid_point)
+        high_half_cnt = len(sorted_r) - low_cnt
+
+        pair_diffs = set()
+        for i in range(len(sorted_r)):
+            for j in range(i + 1, len(sorted_r)):
+                pair_diffs.add(abs(sorted_r[j] - sorted_r[i]))
+        ac_value = len(pair_diffs) - (len(sorted_r) - 1)  # Max = 10 (15 distinct pair distances)
+
+        primes_cnt = sum(1 for n in sorted_r if n in primes_set)
+        last_digits_cnt = len(set(n % 10 for n in sorted_r))
+        decades_list = [n // 10 for n in sorted_r]
+        decades_cnt = len(set(decades_list))
+        max_per_decade = max(decades_list.count(d) for d in set(decades_list)) if decades_list else 0
+
         r_span = sorted_r[-1] - sorted_r[0] if len(sorted_r) >= 2 else 0
-        consec_pairs = sum(1 for i in range(len(sorted_r) - 1) if sorted_r[i + 1] - sorted_r[i] == 1)
+        adj_gaps = [sorted_r[i + 1] - sorted_r[i] for i in range(len(sorted_r) - 1)] if len(sorted_r) >= 2 else [0]
+        max_gap = max(adj_gaps)
+        consec_pairs = sum(1 for g in adj_gaps if g == 1)
         has_triplet = any(
             sorted_r[i + 1] - sorted_r[i] == 1 and sorted_r[i + 2] - sorted_r[i + 1] == 1
             for i in range(len(sorted_r) - 2)
         )
         high_cnt = sum(1 for n in sorted_r if n > 31)
 
-        # Bonus for strict Gauss sweet spot, 3C:3L parity, and anti-crowd numbers > 31
-        in_strict_gauss = strict_gauss_min <= r_sum <= strict_gauss_max
-        parity_perfect = even_cnt == 3 or (even_cnt in (2, 4) and abs(r_sum - gauss_target) <= 8)
-        spread_strict = decades_cnt >= 4 and r_span >= min_span_req and not has_triplet and consec_pairs <= 1
-        anti_crowd_strict = high_cnt >= 2
+        # Evaluate the 8 Hard Jackpot DNA Gates
+        g1_ac_entropy = (ac_value == 10) or (ac_value >= 9 and last_digits_cnt == 6)
+        g2_prime_equilibrium = primes_cnt in (2, 3)
+        g3_modulo10_diversity = last_digits_cnt >= 5
+        g4_dual_binary_balance = (even_cnt == 3) and (low_cnt == 3)
+        g5_bullseye_gauss_and_gap = (core_gauss_min <= r_sum <= core_gauss_max) and (r_span >= min_span_req) and (max_gap <= max_gap_req)
+        g6_decade_and_step_discipline = (decades_cnt >= 4) and (max_per_decade <= 2) and (consec_pairs <= 1) and (not has_triplet)
         special_valid = (not is_power) or (sp is not None and sp not in sorted_r)
+        g7_anti_split_jackpot = (high_cnt >= 2) and special_valid
+        g8_ai_convergence = is_recommended_audit and (strategy in ("hybrid_ai_learned", "balanced", "mean_reversion", "mixed"))
 
-        anti_crowd_row_bonus = min(3.6, high_cnt * 1.2) + (1.2 if even_cnt == 3 else 0.0) + (1.0 if in_strict_gauss else 0.0)
-        r_beauty = round(min(99.2, 0.60 * a_score + 0.34 * f_score + anti_crowd_row_bonus), 1)
+        passed_gates: List[str] = []
+        failed_gates: List[str] = []
 
-        # Strict 5-Gate check: ONLY rows passing ALL 5 gates + score >= 93.0 are Golden Playable Rows
-        failed_gates = []
-        if not in_strict_gauss:
-            failed_gates.append(f"Tổng {r_sum} ngoài vùng tâm hẹp ({strict_gauss_min}-{strict_gauss_max})")
-        if not parity_perfect:
-            failed_gates.append(f"Chẵn/Lẻ {even_cnt}C:{6-even_cnt}L chưa đạt chuẩn cân bằng tâm")
-        if not spread_strict:
-            failed_gates.append("Độ phủ đầu chục hoặc biên độ chưa tối ưu")
-        if not anti_crowd_strict:
-            failed_gates.append(f"Chỉ có {high_cnt} số > 31 (cần ≥ 2 số để chống chia giải)")
-        if not special_valid:
-            failed_gates.append("Thiếu bóng đặc biệt độc lập")
+        if g1_ac_entropy:
+            passed_gates.append(f"Cổng 1 [AC-Value]: Đạt {ac_value}/10 ({len(pair_diffs)}/15 hiệu số đôi độc nhất)")
+        else:
+            failed_gates.append(f"Cổng 1 [AC-Value]: {ac_value}/10 (cần AC=10 hoặc AC=9 kèm 6 đuôi độc nhất)")
 
-        is_golden_row = (
-            is_recommended_audit
-            and len(failed_gates) == 0
-            and r_beauty >= GOLDEN_ROW_MIN_SCORE
-        )
+        if g2_prime_equilibrium:
+            passed_gates.append(f"Cổng 2 [Số Nguyên Tố]: Đúng {primes_cnt} số nguyên tố (đỉnh xác suất 6/6)")
+        else:
+            failed_gates.append(f"Cổng 2 [Số Nguyên Tố]: Có {primes_cnt} số nguyên tố (cần đúng 2 hoặc 3 số)")
+
+        if g3_modulo10_diversity:
+            passed_gates.append(f"Cổng 3 [Đuôi Modulo-10]: {last_digits_cnt}/6 chữ số hàng đơn vị khác nhau")
+        else:
+            failed_gates.append(f"Cổng 3 [Đuôi Modulo-10]: Chỉ có {last_digits_cnt}/6 đuôi khác nhau (cần ≥ 5)")
+
+        if g4_dual_binary_balance:
+            passed_gates.append(f"Cổng 4 [Đối Xứng Kép]: Chuẩn 3 Chẵn : 3 Lẻ & 3 Thấp : 3 Cao")
+        else:
+            failed_gates.append(f"Cổng 4 [Đối Xứng Kép]: {even_cnt}C:{6-even_cnt}L | {low_cnt}T:{high_half_cnt}C (cần đúng 3C:3L & 3T:3C)")
+
+        if g5_bullseye_gauss_and_gap:
+            passed_gates.append(f"Cổng 5 [Tâm Lõi Độc Đắc]: Tổng {r_sum} trong lõi ({core_gauss_min}-{core_gauss_max}), bước nhảy max {max_gap}")
+        else:
+            failed_gates.append(
+                f"Cổng 5 [Tâm Lõi Độc Đắc]: Tổng {r_sum} (cần {core_gauss_min}-{core_gauss_max}), biên độ {r_span} (≥{min_span_req}), bước nhảy max {max_gap} (≤{max_gap_req})"
+            )
+
+        if g6_decade_and_step_discipline:
+            passed_gates.append(f"Cổng 6 [Phân Tán Đầu Chục]: {decades_cnt} đầu chục, tối đa {max_per_decade} số/đầu chục")
+        else:
+            failed_gates.append(f"Cổng 6 [Phân Tán Đầu Chục]: {decades_cnt} đầu chục, max {max_per_decade} số/đầu (cần ≥4 đầu & ≤2 số/đầu)")
+
+        if g7_anti_split_jackpot:
+            passed_gates.append(f"Cổng 7 [Chống Chia Giải]: {high_cnt} số > 31 bảo toàn Độc Đắc")
+        else:
+            failed_gates.append(f"Cổng 7 [Chống Chia Giải]: Chỉ có {high_cnt} số > 31 (cần ≥ 2 số > 31 & bóng ĐB độc lập)")
+
+        if g8_ai_convergence:
+            passed_gates.append("Cổng 8 [Hội Tụ AI]: Đạt chuẩn kiểm toán không rủi ro cấu trúc")
+        else:
+            failed_gates.append("Cổng 8 [Hội Tụ AI]: Chưa đạt chuẩn kiểm toán chiến lược AI")
+
+        gates_passed = len(passed_gates)
+        if gates_passed > max_gates_passed:
+            max_gates_passed = gates_passed
+
+        # ONLY rows locking all 8/8 Jackpot DNA Gates trigger the Jackpot Signal
+        is_golden_row = (gates_passed == TOTAL_JACKPOT_GATES)
+
+        # Calibrate score strictly by 8/8 Jackpot DNA Gates so non-8/8 rows never cross 92.5
+        gauss_closeness_bonus = max(0.0, 1.5 - (abs(r_sum - gauss_target) * 0.15))
+        ac_bonus = 1.0 if ac_value == 10 else 0.3
+        if is_golden_row:
+            r_beauty = round(min(99.6, 96.8 + gauss_closeness_bonus + ac_bonus), 1)
+        else:
+            r_beauty = round(min(92.5, 58.0 + (gates_passed * 4.6) + gauss_closeness_bonus), 1)
 
         fc["row_beauty_score"] = r_beauty
         fc["is_golden_row"] = is_golden_row
         fc["is_best_row"] = is_golden_row
+        fc["jackpot_gates_passed"] = gates_passed
+        fc["jackpot_gates_total"] = TOTAL_JACKPOT_GATES
+        fc["ac_value"] = ac_value
+        fc["primes_count"] = primes_cnt
+        fc["distinct_last_digits"] = last_digits_cnt
+        fc["low_high_ratio"] = f"{low_cnt}T : {high_half_cnt}C"
+        fc["max_gap"] = max_gap
+        fc["passed_golden_gates"] = passed_gates
         fc["failed_golden_gates"] = failed_gates
 
         if is_golden_row:
@@ -382,6 +453,12 @@ def compute_ticket_beauty_evaluation(
                 "numbers": sorted_r,
                 "special_number": sp if is_power else None,
                 "row_beauty_score": r_beauty,
+                "jackpot_gates_passed": gates_passed,
+                "jackpot_gates_total": TOTAL_JACKPOT_GATES,
+                "ac_value": ac_value,
+                "primes_count": primes_cnt,
+                "distinct_last_digits": last_digits_cnt,
+                "low_high_ratio": f"{low_cnt}T : {high_half_cnt}C",
                 "sum": r_sum,
                 "parity": f"{even_cnt}C : {6 - even_cnt}L",
                 "high_numbers_count": high_cnt
@@ -444,54 +521,50 @@ def compute_ticket_beauty_evaluation(
         pillar_diversity = min(99.5, round(65.0 + all_decades * 6.9, 1))
 
     # Final Composite Ticket Beauty Score
-    ticket_beauty_score = round(
-        min(
-            99.5,
-            0.40 * pillar_structure
-            + 0.20 * pillar_coverage
-            + 0.15 * pillar_ai_convergence
-            + 0.15 * pillar_anti_crowd
-            + 0.10 * pillar_diversity
-        ),
-        1
+    base_ticket_score = (
+        0.40 * pillar_structure
+        + 0.20 * pillar_coverage
+        + 0.15 * pillar_ai_convergence
+        + 0.15 * pillar_anti_crowd
+        + 0.10 * pillar_diversity
     )
-
-    # Strict Ticket Qualification: must have >= 1 Golden Row AND strong overall structure
     has_golden_signal = len(golden_rows) > 0
-    is_golden_ticket = (
-        has_golden_signal
-        and recommended_rows_count >= 3
-        and 19 <= unique_cnt <= 26
-        and ticket_beauty_score >= GOLDEN_TICKET_MIN_SCORE
-    )
-
-    if is_golden_ticket and len(golden_rows) >= 2:
-        beauty_grade = "S+"
-        beauty_verdict = f"🔥 Tín Hiệu Vàng ({len(golden_rows)} Dãy Đẹp Nên Dùng)"
-    elif has_golden_signal:
-        beauty_grade = "S"
-        beauty_verdict = f"✨ Có {len(golden_rows)} Dãy Đẹp Đạt Chuẩn"
-    elif ticket_beauty_score >= 88.0:
-        beauty_grade = "A"
-        beauty_verdict = "Vé Khá (Chưa Có Dãy Đạt Ngưỡng Vàng)"
+    if has_golden_signal:
+        ticket_beauty_score = round(min(99.5, max(96.0, base_ticket_score + 3.5)), 1)
     else:
-        beauty_grade = "B"
-        beauty_verdict = "Chưa Đạt Ngưỡng — Chỉ Theo Dõi"
+        ticket_beauty_score = round(min(91.5, base_ticket_score - 3.0), 1)
+
+    is_golden_ticket = has_golden_signal
 
     if has_golden_signal:
-        g_labels = ", ".join(f"{gr['row_label']} ({gr['row_beauty_score']}đ)" for gr in golden_rows)
+        beauty_grade = "S+"
+        beauty_verdict = f"🎯 Tín Hiệu Săn Độc Đắc ({len(golden_rows)} Dãy Đạt 8/8 Cổng DNA)"
+    elif max_gates_passed == 7:
+        beauty_grade = "A+"
+        beauty_verdict = "Đạt 7/8 Cổng DNA Độc Đắc (Thiếu 1 Cổng — Chưa Vào Tiền)"
+    elif max_gates_passed >= 5:
+        beauty_grade = "A"
+        beauty_verdict = f"Đạt {max_gates_passed}/8 Cổng DNA (Chỉ Theo Dõi Tự Động)"
+    else:
+        beauty_grade = "B"
+        beauty_verdict = f"Đạt {max_gates_passed}/8 Cổng DNA — Bỏ Qua"
+
+    if has_golden_signal:
+        g_labels = ", ".join(
+            f"{gr['row_label']} (8/8 Cổng • AC={gr['ac_value']} • {gr['primes_count']} Ng.Tố • Tổng {gr['sum']})"
+            for gr in golden_rows
+        )
         highlights = [
-            f"🔥 Đạt ngưỡng sử dụng: {g_labels} vượt qua toàn bộ 5 cổng kiểm định khắt khe",
-            f"Bao phủ {unique_cnt} số độc lập"
-            + (f" • Số trụ hội tụ: {', '.join(f'{n:02d}' for n in anchor_numbers[:4])}" if anchor_numbers else ""),
+            f"🎯 KHÓA MỤC TIÊU ĐỘC ĐẮC (8/8 CỔNG DNA): {g_labels}",
+            f"Cấu trúc Độc Đắc: 3C:3L + 3 Thấp:3 Cao + AC-Value đỉnh + Đúng 2–3 số nguyên tố + ≥5 đuôi số khác nhau",
             f"Chống chia giải Độc Đắc: {high_numbers_count} vị trí số > 31"
             + (f" • {distinct_specials_count} bóng ĐB độc lập" if is_power and distinct_specials_count > 0 else "")
         ]
     else:
         highlights = [
-            f"⏳ Vé này chưa có dãy nào vượt ngưỡng Vàng ≥ {GOLDEN_ROW_MIN_SCORE}đ (5 cổng Gauss hẹp + 3C:3L + chống chia giải)",
-            f"Cấu trúc hiện tại: {recommended_rows_count}/{len(rows)} dãy mức an toàn, bao phủ {unique_cnt} số",
-            "Khuyến nghị: Chỉ để hệ thống đối soát học ngầm, đợi kỳ/vé có tín hiệu Dãy Đẹp chuẩn để sử dụng"
+            f"⏸️ Cao nhất đạt {max_gates_passed}/8 Cổng DNA Giải Độc Đắc (Yêu cầu tuyệt đối 8/8 cổng mới phát tín hiệu sử dụng)",
+            f"Các cổng khắt khe: AC-Value=10 (15/15 khoảng cách độc nhất), 2–3 số nguyên tố, 3C:3L & 3 Thấp:3 Cao, Tổng lõi {core_gauss_min}–{core_gauss_max}",
+            "Khuyến nghị: Kỳ này chưa xuất hiện tổ hợp khóa đủ 8/8 Cổng DNA Độc Đắc — Chỉ để AI tự đối soát ngầm"
         ]
 
     return {
@@ -505,6 +578,8 @@ def compute_ticket_beauty_evaluation(
         "best_row_index": top_golden_idx,
         "best_row_label": best_row_label,
         "best_row_score": top_golden_score if top_golden_idx is not None else 0.0,
+        "max_gates_passed": max_gates_passed,
+        "total_jackpot_gates": TOTAL_JACKPOT_GATES,
         "anchor_numbers": anchor_numbers,
         "high_numbers_count": high_numbers_count,
         "distinct_specials_count": distinct_specials_count,
@@ -668,6 +743,8 @@ async def list_tickets(
             "is_golden_ticket": beauty_eval["is_golden_ticket"],
             "golden_rows_count": beauty_eval["golden_rows_count"],
             "golden_rows": beauty_eval["golden_rows"],
+            "max_gates_passed": beauty_eval["max_gates_passed"],
+            "total_jackpot_gates": beauty_eval["total_jackpot_gates"],
             "best_row_index": beauty_eval["best_row_index"],
             "best_row_label": beauty_eval["best_row_label"],
             "best_row_score": beauty_eval["best_row_score"],

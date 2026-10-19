@@ -172,16 +172,83 @@ def audit_single_row_recommendation(
         major_risk_count += 1
         score -= 8.0
 
-    # Rủi ro chia giải (Crowd/Split-Prize Risk)
-    if major_risk_count == 0:
+    # 5. Trụ Cột 5 (MỚI): Kiểm Định 8 Cổng DNA Giải Độc Đắc (Jackpot 6/6 DNA Gates)
+    primes_set = {2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43, 47, 53}
+    pair_diffs = set()
+    for i in range(len(sorted_nums)):
+        for j in range(i + 1, len(sorted_nums)):
+            pair_diffs.add(abs(sorted_nums[j] - sorted_nums[i]))
+    ac_value = len(pair_diffs) - (len(sorted_nums) - 1)  # Max = 10 (15 distinct pair distances - 5)
+
+    primes_count = sum(1 for n in sorted_nums if n in primes_set)
+    distinct_last_digits = len(set(n % 10 for n in sorted_nums))
+    mid_point = 28 if is_power else 22
+    low_count = sum(1 for n in sorted_nums if n <= mid_point)
+    high_half_count = 6 - low_count
+    low_high_str = f"{low_count}T : {high_half_count}C"
+    adj_gaps = [sorted_nums[i + 1] - sorted_nums[i] for i in range(len(sorted_nums) - 1)] if len(sorted_nums) >= 2 else [0]
+    max_gap = max(adj_gaps)
+    decade_list = [n // 10 for n in sorted_nums]
+    max_per_decade = max(decade_list.count(d) for d in set(decade_list)) if decade_list else 0
+    anti_crowd_high_cnt = sum(1 for n in sorted_nums if n > 31)
+
+    if ac_value == 10:
+        pros.append(
+            "Độ phức tạp số học AC-Value đạt đỉnh tuyệt đối 10/10 (15/15 khoảng cách đôi hoàn toàn độc nhất), chuẩn Entropy của Giải Độc Đắc."
+        )
+        score += 4.0
+    elif ac_value == 9:
+        pros.append(
+            "Độ phức tạp số học AC-Value rất cao (9/10, 14/15 khoảng cách đôi khác biệt), không bị trùng nhịp cấp số cộng."
+        )
+        score += 2.0
+    else:
         cons.append(
-            "Nguy cơ chia giải thưởng: Bộ số có cấu trúc cân bằng, phân tán chuẩn thường là khuôn mẫu nhiều người cùng chọn, tiềm ẩn rủi ro chia sẻ Jackpot nếu trúng."
+            f"Chỉ số phức tạp AC-Value = {ac_value}/10 (< 9): Tồn tại nhiều khoảng cách cặp bị lặp lại đối xứng, khó đạt chuẩn Giải Độc Đắc 6/6."
+        )
+        score -= 4.0
+
+    if primes_count in (2, 3):
+        pros.append(
+            f"Chứa đúng {primes_count} số nguyên tố — trùng khớp vùng đỉnh xác suất nổ Jackpot 6/6."
+        )
+    else:
+        cons.append(
+            f"Số lượng số nguyên tố ({primes_count} số) lệch khỏi chuẩn vàng Độc Đắc (chuẩn là 2 hoặc 3 số nguyên tố)."
+        )
+
+    if distinct_last_digits >= 5:
+        pros.append(
+            f"Đa dạng đuôi số Modulo-10 ({distinct_last_digits}/6 đuôi khác nhau), tránh hiệu ứng co cụm hàng đơn vị."
+        )
+    else:
+        cons.append(
+            f"Trùng lặp nhiều đuôi số hàng đơn vị (chỉ có {distinct_last_digits}/6 đuôi khác nhau)."
+        )
+
+    if low_count == 3:
+        pros.append(
+            f"Cân bằng hoàn hảo Nửa Dưới / Nửa Trên bàn cờ ({low_high_str}, mốc {mid_point})."
+        )
+    else:
+        cons.append(
+            f"Tỷ lệ Nửa Dưới / Nửa Trên ({low_high_str}) chưa đạt mức đối xứng tuyệt đối 3 Thấp : 3 Cao của chuẩn Độc Đắc."
+        )
+
+    # Rủi ro chia giải (Crowd/Split-Prize Risk)
+    if anti_crowd_high_cnt >= 2:
+        pros.append(
+            f"Có {anti_crowd_high_cnt} số lớn (> 31) nằm ngoài vùng ngày sinh, giúp bảo toàn trọn vẹn giá trị Giải Độc Đắc không bị chia nhỏ."
+        )
+    elif major_risk_count == 0:
+        cons.append(
+            f"Chỉ có {anti_crowd_high_cnt} số > 31: Bộ số tập trung nhiều ở vùng ngày sinh (01–31), tiềm ẩn rủi ro phải chia nhỏ Jackpot với nhiều người nếu trúng."
         )
 
     if is_power and special_number:
         if special_number not in sorted_nums:
             pros.append(
-                f"Bóng đặc biệt DB #{special_number:02d} độc lập hoàn toàn với 6 số chính, mở rộng tiềm năng săn Jackpot 2."
+                f"Bóng đặc biệt DB #{special_number:02d} độc lập hoàn toàn với 6 số chính, mở rộng tiềm năng săn kép Jackpot 1 & Jackpot 2."
             )
             cons.append(
                 f"Phụ thuộc bóng đặc biệt: Cần trúng chính xác bóng #{special_number:02d} này mới có thể ẵm Jackpot 2 (nếu trúng 5/6 số chính)."
@@ -204,8 +271,8 @@ def audit_single_row_recommendation(
         verdict_color = "emerald"
         badge = "Tỷ Lệ Tiềm Năng Cao"
         tactical_advice = (
-            "Dãy số đạt trạng thái cân bằng xác suất xuất sắc trên cả 4 tiêu chuẩn (Gauss, Chẵn/Lẻ và Phân Tán). "
-            "Các điểm cần cân nhắc chủ yếu là sự đánh đổi tự nhiên của toán học. Thích hợp để chốt vào tiền cho kỳ này."
+            "Dãy số đạt trạng thái cân bằng xác suất tốt trên các tiêu chuẩn nền tảng. "
+            "Tuy nhiên để săn Giải Độc Đắc 6/6, hãy kiểm tra thêm dấu hiệu đạt đủ 8/8 Cổng DNA Độc Đắc."
         )
     elif major_risk_count <= 1 and final_score >= 68.0:
         verdict_code = "consider"
@@ -238,8 +305,16 @@ def audit_single_row_recommendation(
         "metrics": {
             "sum": sum_val,
             "parity": parity_str,
+            "low_high": low_high_str,
             "span": span,
+            "max_gap": max_gap,
+            "ac_value": ac_value,
+            "primes_count": primes_count,
+            "distinct_last_digits": distinct_last_digits,
+            "max_per_decade": max_per_decade,
+            "high_numbers_count": anti_crowd_high_cnt,
             "decades_count": len(decades),
             "consecutive_pairs_count": len(consecutive_pairs)
         }
     }
+

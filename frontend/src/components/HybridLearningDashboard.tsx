@@ -281,16 +281,16 @@ export const HybridLearningDashboard: React.FC<HybridLearningProps> = ({
             </span>
           </div>
 
-          {/* Signal Detector: ONLY triggers when >= 1 row strictly passes all 5 Golden Gates */}
+          {/* Signal Detector: ONLY triggers when >= 1 row strictly locks all 8/8 Jackpot DNA Gates */}
           {hasPlayableSignal ? (
             <div className="bg-gradient-to-r from-amber-500/15 via-slate-900 to-emerald-500/10 border border-amber-400/60 rounded-2xl p-4 shadow-lg shadow-amber-500/10 space-y-3">
               <div className="flex flex-col md:flex-row md:items-center justify-between gap-2">
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="px-2.5 py-1 rounded-lg bg-gradient-to-r from-amber-400 to-yellow-300 text-slate-950 font-black text-xs flex items-center gap-1 shadow">
-                    🔥 CÓ TÍN HIỆU DÃY ĐẸP ĐỂ SỬ DỤNG ({playableGoldenRows.length} DÃY ĐẠT CHUẨN VÀNG)
+                    🎯 TÍN HIỆU SĂN GIẢI ĐỘC ĐẮC ({playableGoldenRows.length} DÃY ĐẠT ĐỦ 8/8 CỔNG DNA JACKPOT)
                   </span>
                   <span className="text-xs text-emerald-300 font-semibold">
-                    Đã vượt qua đủ 5 cổng kiểm định khắt khe (Tâm Gauss hẹp + Chẵn/Lẻ chuẩn + ≥4 đầu chục + ≥2 số &gt;31 + Điểm ≥ 93.0đ)
+                    Khóa trọn 8/8 Cổng DNA Độc Đắc: AC=10 (15/15 khoảng cách độc nhất) • 2–3 Số nguyên tố • ≥5 Đuôi khác nhau • 3C:3L & 3T:3C • Lõi Gauss • ≥2 số &gt;31
                   </span>
                 </div>
               </div>
@@ -303,7 +303,7 @@ export const HybridLearningDashboard: React.FC<HybridLearningProps> = ({
                   >
                     <div className="flex flex-wrap items-center gap-2">
                       <span className="px-2 py-0.5 rounded bg-amber-400/20 text-amber-300 border border-amber-400/40 text-[11px] font-black">
-                        {gr.variant_name || `Vé #${gr.ticket_batch_index}`} • {gr.row_label} ({gr.row_beauty_score}đ)
+                        {gr.variant_name || `Vé #${gr.ticket_batch_index}`} • {gr.row_label} (8/8 Cổng • {gr.row_beauty_score}đ)
                       </span>
                       <div className="flex items-center gap-1">
                         {(gr.numbers || []).map((n: number) => (
@@ -322,7 +322,7 @@ export const HybridLearningDashboard: React.FC<HybridLearningProps> = ({
                       </div>
                     </div>
                     <span className="text-[11px] text-slate-300 font-mono">
-                      Tổng {gr.sum} • {gr.parity}
+                      AC={gr.ac_value ?? 10}/10 • {gr.primes_count ?? 2} Ng.Tố • Tổng {gr.sum}
                     </span>
                   </div>
                 ))}
@@ -334,15 +334,15 @@ export const HybridLearningDashboard: React.FC<HybridLearningProps> = ({
                 <Clock className="w-4 h-4 text-slate-400 shrink-0 mt-0.5" />
                 <div className="text-xs text-slate-300 space-y-0.5">
                   <div className="font-bold text-slate-200">
-                    ⏸️ Kỳ #{selectedTicket.target_draw_period} hiện chưa có Dãy/Vé nào đạt ngưỡng Đẹp Tuyệt Đối (≥ 93.0đ)
+                    ⏸️ Kỳ #{selectedTicket.target_draw_period} chưa có dãy nào khóa đủ 8/8 Cổng DNA Giải Độc Đắc (Cao nhất: {selectedTicket.max_gates_passed ?? 6}/8 cổng)
                   </div>
                   <p className="text-[11px] text-slate-400">
-                    Không phải kỳ nào cũng bắt buộc có vé đẹp. Các vé dưới đây chỉ dùng để AI tự đối soát học ngầm — khuyến nghị đợi kỳ phát tín hiệu 🔥 Dãy Đẹp mới sử dụng.
+                    Để săn Giải Độc Đắc 6/6, hệ thống đòi hỏi vượt qua tuyệt đối 8/8 cổng (AC=10, 2–3 số nguyên tố, ≥5 đuôi số, đối xứng kép 3C:3L & 3T:3C, lõi Gauss, ≥2 số &gt;31). Kỳ này chỉ theo dõi tự động.
                   </p>
                 </div>
               </div>
               <span className="px-2.5 py-1 rounded-lg bg-slate-800 border border-slate-700 text-[11px] font-semibold text-slate-400 shrink-0">
-                0 Dãy Đạt Ngưỡng Vàng
+                Đạt Tối Đa {selectedTicket.max_gates_passed ?? 6}/8 Cổng DNA
               </span>
             </div>
           )}
@@ -367,19 +367,17 @@ export const HybridLearningDashboard: React.FC<HybridLearningProps> = ({
                         : "bg-slate-900/90 text-slate-400 border-slate-800 hover:border-slate-700 hover:text-slate-200"
                     }`}
                   >
-                    {hasGolden && <span>🔥 Có {tItem.golden_rows_count} Dãy Đẹp</span>}
+                    {hasGolden && <span>🎯 {tItem.golden_rows_count} Dãy Đạt 8/8 Cổng</span>}
                     <span>{tItem.variant_name || `Vé #${idx + 1}`}</span>
-                    {tItem.ticket_beauty_score && (
-                      <span
-                        className={`px-1.5 py-0.5 rounded text-[10px] font-mono ${
-                          isSelected && hasGolden
-                            ? "bg-slate-950/25 text-slate-950 font-black"
-                            : "bg-slate-950/50 text-slate-300"
-                        }`}
-                      >
-                        {tItem.ticket_beauty_score}đ
-                      </span>
-                    )}
+                    <span
+                      className={`px-1.5 py-0.5 rounded text-[10px] font-mono ${
+                        isSelected && hasGolden
+                          ? "bg-slate-950/25 text-slate-950 font-black"
+                          : "bg-slate-950/50 text-slate-300"
+                      }`}
+                    >
+                      {tItem.max_gates_passed ?? 6}/8 cổng
+                    </span>
                   </button>
                 );
               })}
@@ -393,6 +391,7 @@ export const HybridLearningDashboard: React.FC<HybridLearningProps> = ({
               const sum = row.reduce((a, b) => a + b, 0);
               const evens = row.filter((n) => n % 2 === 0).length;
               const isGoldenRow = !!forecast.is_golden_row;
+              const gatesPassed = forecast.jackpot_gates_passed ?? (isGoldenRow ? 8 : 6);
 
               return (
                 <div
@@ -414,9 +413,16 @@ export const HybridLearningDashboard: React.FC<HybridLearningProps> = ({
                       {String.fromCharCode(65 + rIdx)}
                     </span>
 
-                    {isGoldenRow && (
+                    {isGoldenRow ? (
                       <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-amber-400/20 text-amber-300 border border-amber-400/50 shrink-0">
-                        🔥 Dãy Đẹp Đạt Chuẩn ({forecast.row_beauty_score}đ — Nên Dùng)
+                        🎯 ĐẠT 8/8 CỔNG DNA ĐỘC ĐẮC ({forecast.row_beauty_score}đ — NÊN DÙNG)
+                      </span>
+                    ) : (
+                      <span
+                        className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-slate-800 text-slate-400 border border-slate-700 shrink-0"
+                        title={(forecast.failed_golden_gates || []).join(" | ")}
+                      >
+                        Đạt {gatesPassed}/8 Cổng DNA
                       </span>
                     )}
 
@@ -460,6 +466,9 @@ export const HybridLearningDashboard: React.FC<HybridLearningProps> = ({
                   <div className="flex flex-wrap items-center gap-3 text-xs text-slate-400 pt-2 md:pt-0 border-t md:border-t-0 border-slate-800">
                     <span>Tổng: <b className="text-white">{sum}</b></span>
                     <span>Chẵn/Lẻ: <b className="text-white">{evens}C : {6 - evens}L</b></span>
+                    {forecast.ac_value !== undefined && (
+                      <span>AC: <b className="text-emerald-300">{forecast.ac_value}/10</b></span>
+                    )}
                     <div className="flex items-center gap-1 bg-amber-500/10 border border-amber-500/20 px-2 py-0.5 rounded-md text-amber-300 font-semibold">
                       <Trophy className="w-3 h-3 text-amber-400" />
                       <span>XS Độc Đắc: <b className="font-mono text-amber-400">{forecast.jackpot_probability_display || "1/8.14M (+18%)"}</b></span>

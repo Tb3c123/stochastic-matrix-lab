@@ -85,6 +85,8 @@ async def get_auto_cycle_status(
                 "is_golden_ticket": beauty_eval["is_golden_ticket"],
                 "golden_rows_count": beauty_eval["golden_rows_count"],
                 "golden_rows": beauty_eval["golden_rows"],
+                "max_gates_passed": beauty_eval["max_gates_passed"],
+                "total_jackpot_gates": beauty_eval["total_jackpot_gates"],
                 "best_row_index": beauty_eval["best_row_index"],
                 "best_row_label": beauty_eval["best_row_label"],
                 "best_row_score": beauty_eval["best_row_score"],
