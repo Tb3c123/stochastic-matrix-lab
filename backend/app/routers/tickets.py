@@ -576,13 +576,19 @@ async def get_winning_history(
 
 @router.post("/simulate-walk-forward", response_model=ResponseEnvelope)
 async def simulate_walk_forward(
-    days_back: int = Query(20, ge=5, le=60),
+    days_back: int = Query(50, ge=5, le=120),
     game_code: Optional[str] = Query(None),
+    reset_existing: bool = Query(False),
     db: AsyncSession = Depends(get_db_session)
 ):
-    """Execute realistic walk-forward simulation across past ~20 days without lookahead bias."""
+    """Execute realistic walk-forward simulation across past `days_back` days (default 50 days) without lookahead bias."""
     from app.analytics.simulation import run_walk_forward_simulation
-    result = await run_walk_forward_simulation(db, days_back=days_back, target_game_code=game_code)
+    result = await run_walk_forward_simulation(
+        db,
+        days_back=days_back,
+        target_game_code=game_code,
+        reset_existing=reset_existing
+    )
     return ResponseEnvelope(success=True, data=result)
 
 @router.get("/upcoming", response_model=ResponseEnvelope)
