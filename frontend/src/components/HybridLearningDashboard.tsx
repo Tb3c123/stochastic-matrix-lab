@@ -61,11 +61,10 @@ export const HybridLearningDashboard: React.FC<HybridLearningProps> = ({
       : statusData.latest_ai_ticket
       ? [statusData.latest_ai_ticket]
       : [];
-  const bestTicketIdx = latestAiTickets.findIndex((t: any) => t.is_best_ai_ticket);
-  const bestAiTicket =
-    statusData.best_ai_ticket ||
-    (bestTicketIdx >= 0 ? latestAiTickets[bestTicketIdx] : latestAiTickets[0]) ||
-    null;
+  const playableGoldenRows: any[] = statusData.playable_golden_rows || [];
+  const hasPlayableSignal: boolean =
+    statusData.has_playable_signal ?? playableGoldenRows.length > 0;
+  const bestTicketIdx = latestAiTickets.findIndex((t: any) => t.has_golden_signal && t.is_best_ai_ticket);
   const selectedTicket = latestAiTickets[activeTicketIdx] || latestAiTickets[0] || null;
   const learningLogs = statusData.learning_logs || [];
   const banditReward = Math.round(statusData.bandit_cumulative_reward || 0);
@@ -282,51 +281,69 @@ export const HybridLearningDashboard: React.FC<HybridLearningProps> = ({
             </span>
           </div>
 
-          {/* Best Ticket of the Day Spotlight Card */}
-          {bestAiTicket && (
-            <div className="bg-gradient-to-r from-amber-500/15 via-slate-900 to-emerald-500/10 border border-amber-400/50 rounded-2xl p-4 shadow-lg shadow-amber-500/5 space-y-2.5">
+          {/* Signal Detector: ONLY triggers when >= 1 row strictly passes all 5 Golden Gates */}
+          {hasPlayableSignal ? (
+            <div className="bg-gradient-to-r from-amber-500/15 via-slate-900 to-emerald-500/10 border border-amber-400/60 rounded-2xl p-4 shadow-lg shadow-amber-500/10 space-y-3">
               <div className="flex flex-col md:flex-row md:items-center justify-between gap-2">
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="px-2.5 py-1 rounded-lg bg-gradient-to-r from-amber-400 to-yellow-300 text-slate-950 font-black text-xs flex items-center gap-1 shadow">
-                    👑 VÉ ĐẸP NHẤT HÔM NAY (TOP #1 KHUYÊN DÙNG)
+                    🔥 CÓ TÍN HIỆU DÃY ĐẸP ĐỂ SỬ DỤNG ({playableGoldenRows.length} DÃY ĐẠT CHUẨN VÀNG)
                   </span>
-                  <span className="text-xs md:text-sm font-extrabold text-white">
-                    {bestAiTicket.variant_name || "Vé #1 • Core Hybrid AI"} (Vé #{bestAiTicket.id})
+                  <span className="text-xs text-emerald-300 font-semibold">
+                    Đã vượt qua đủ 5 cổng kiểm định khắt khe (Tâm Gauss hẹp + Chẵn/Lẻ chuẩn + ≥4 đầu chục + ≥2 số &gt;31 + Điểm ≥ 93.0đ)
                   </span>
-                  <span className="px-2 py-0.5 rounded-full text-[11px] font-mono font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">
-                    Điểm Đẹp: {bestAiTicket.ticket_beauty_score || 92.5}/100 ({bestAiTicket.beauty_grade || "S+"})
-                  </span>
-                </div>
-
-                <div className="flex items-center gap-2">
-                  <span className="text-xs text-amber-300 font-bold">
-                    ★ Dãy đẹp nhất vé: <b className="text-white">{bestAiTicket.best_row_label || "Dãy A"} ({bestAiTicket.best_row_score || 94.0}đ)</b>
-                  </span>
-                  {bestTicketIdx >= 0 && activeTicketIdx !== bestTicketIdx && (
-                    <button
-                      type="button"
-                      onClick={() => setActiveTicketIdx(bestTicketIdx)}
-                      className="px-2.5 py-1 rounded-lg bg-amber-400 hover:bg-amber-300 text-slate-950 font-bold text-xs cursor-pointer transition-all"
-                    >
-                      Xem Vé Đẹp Nhất →
-                    </button>
-                  )}
                 </div>
               </div>
 
-              {bestAiTicket.beauty_highlights && bestAiTicket.beauty_highlights.length > 0 && (
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-2 pt-1">
-                  {bestAiTicket.beauty_highlights.map((hl: string, hIdx: number) => (
-                    <div
-                      key={hIdx}
-                      className="text-[11px] text-slate-200 bg-slate-950/60 border border-slate-800/80 rounded-xl px-3 py-1.5 flex items-center gap-1.5"
-                    >
-                      <Sparkles className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-                      <span>{hl}</span>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
+                {playableGoldenRows.map((gr: any, gIdx: number) => (
+                  <div
+                    key={gIdx}
+                    className="p-3 rounded-xl bg-slate-950/80 border border-amber-400/40 flex flex-wrap items-center justify-between gap-2"
+                  >
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="px-2 py-0.5 rounded bg-amber-400/20 text-amber-300 border border-amber-400/40 text-[11px] font-black">
+                        {gr.variant_name || `Vé #${gr.ticket_batch_index}`} • {gr.row_label} ({gr.row_beauty_score}đ)
+                      </span>
+                      <div className="flex items-center gap-1">
+                        {(gr.numbers || []).map((n: number) => (
+                          <span
+                            key={n}
+                            className="w-6 h-6 rounded-full bg-gradient-to-br from-amber-400 to-amber-600 text-slate-950 font-black text-[11px] flex items-center justify-center font-mono"
+                          >
+                            {n < 10 ? `0${n}` : n}
+                          </span>
+                        ))}
+                        {gr.special_number && (
+                          <span className="w-6 h-6 rounded-full bg-amber-500/20 border border-amber-400 text-amber-300 font-black text-[11px] flex items-center justify-center font-mono ml-0.5">
+                            +{gr.special_number < 10 ? `0${gr.special_number}` : gr.special_number}
+                          </span>
+                        )}
+                      </div>
                     </div>
-                  ))}
+                    <span className="text-[11px] text-slate-300 font-mono">
+                      Tổng {gr.sum} • {gr.parity}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : (
+            <div className="bg-slate-900/90 border border-slate-700/80 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="flex items-start gap-2.5">
+                <Clock className="w-4 h-4 text-slate-400 shrink-0 mt-0.5" />
+                <div className="text-xs text-slate-300 space-y-0.5">
+                  <div className="font-bold text-slate-200">
+                    ⏸️ Kỳ #{selectedTicket.target_draw_period} hiện chưa có Dãy/Vé nào đạt ngưỡng Đẹp Tuyệt Đối (≥ 93.0đ)
+                  </div>
+                  <p className="text-[11px] text-slate-400">
+                    Không phải kỳ nào cũng bắt buộc có vé đẹp. Các vé dưới đây chỉ dùng để AI tự đối soát học ngầm — khuyến nghị đợi kỳ phát tín hiệu 🔥 Dãy Đẹp mới sử dụng.
+                  </p>
                 </div>
-              )}
+              </div>
+              <span className="px-2.5 py-1 rounded-lg bg-slate-800 border border-slate-700 text-[11px] font-semibold text-slate-400 shrink-0">
+                0 Dãy Đạt Ngưỡng Vàng
+              </span>
             </div>
           )}
 
@@ -334,7 +351,7 @@ export const HybridLearningDashboard: React.FC<HybridLearningProps> = ({
           {latestAiTickets.length > 1 && (
             <div className="flex flex-wrap items-center gap-2">
               {latestAiTickets.map((tItem: any, idx: number) => {
-                const isBest = !!tItem.is_best_ai_ticket;
+                const hasGolden = !!tItem.has_golden_signal;
                 const isSelected = activeTicketIdx === idx;
                 return (
                   <button
@@ -342,22 +359,22 @@ export const HybridLearningDashboard: React.FC<HybridLearningProps> = ({
                     onClick={() => setActiveTicketIdx(idx)}
                     className={`px-3.5 py-2 rounded-xl text-xs font-bold border transition-all flex items-center gap-2 cursor-pointer ${
                       isSelected
-                        ? isBest
+                        ? hasGolden
                           ? "bg-gradient-to-r from-amber-500 to-yellow-400 text-slate-950 border-amber-300 shadow-lg shadow-amber-500/20 font-black"
                           : "bg-violet-600 text-white border-violet-400 shadow-lg shadow-violet-600/20"
-                        : isBest
+                        : hasGolden
                         ? "bg-amber-500/15 text-amber-300 border-amber-500/40 hover:bg-amber-500/25"
                         : "bg-slate-900/90 text-slate-400 border-slate-800 hover:border-slate-700 hover:text-slate-200"
                     }`}
                   >
-                    {isBest && <span>👑 TOP #1</span>}
+                    {hasGolden && <span>🔥 Có {tItem.golden_rows_count} Dãy Đẹp</span>}
                     <span>{tItem.variant_name || `Vé #${idx + 1}`}</span>
                     {tItem.ticket_beauty_score && (
                       <span
                         className={`px-1.5 py-0.5 rounded text-[10px] font-mono ${
-                          isSelected && isBest
+                          isSelected && hasGolden
                             ? "bg-slate-950/25 text-slate-950 font-black"
-                            : "bg-slate-950/50 text-amber-300"
+                            : "bg-slate-950/50 text-slate-300"
                         }`}
                       >
                         {tItem.ticket_beauty_score}đ
@@ -375,15 +392,13 @@ export const HybridLearningDashboard: React.FC<HybridLearningProps> = ({
               const forecast = selectedTicket.row_forecasts?.[rIdx] || {};
               const sum = row.reduce((a, b) => a + b, 0);
               const evens = row.filter((n) => n % 2 === 0).length;
-              const isBestRow =
-                forecast.is_best_row ||
-                (selectedTicket.best_row_index !== undefined && selectedTicket.best_row_index === rIdx);
+              const isGoldenRow = !!forecast.is_golden_row;
 
               return (
                 <div
                   key={rIdx}
                   className={`flex flex-col md:flex-row md:items-center justify-between gap-3 p-3 rounded-xl border transition-all ${
-                    isBestRow
+                    isGoldenRow
                       ? "bg-gradient-to-r from-amber-950/35 via-slate-900/90 to-slate-900/90 border-amber-400/60 ring-1 ring-amber-400/30 shadow-md shadow-amber-500/10"
                       : "bg-slate-900/80 border-slate-800/80 hover:border-slate-700"
                   }`}
@@ -391,7 +406,7 @@ export const HybridLearningDashboard: React.FC<HybridLearningProps> = ({
                   <div className="flex flex-wrap items-center gap-3">
                     <span
                       className={`w-7 h-7 rounded-lg text-xs font-bold flex items-center justify-center shadow-md shrink-0 ${
-                        isBestRow
+                        isGoldenRow
                           ? "bg-gradient-to-br from-amber-400 to-yellow-500 text-slate-950 font-black"
                           : "bg-gradient-to-br from-violet-600 to-indigo-600 text-white"
                       }`}
@@ -399,9 +414,9 @@ export const HybridLearningDashboard: React.FC<HybridLearningProps> = ({
                       {String.fromCharCode(65 + rIdx)}
                     </span>
 
-                    {isBestRow && (
+                    {isGoldenRow && (
                       <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-amber-400/20 text-amber-300 border border-amber-400/50 shrink-0">
-                        👑 Dãy Đẹp Nhất ({forecast.row_beauty_score || selectedTicket.best_row_score || 94.0}đ)
+                        🔥 Dãy Đẹp Đạt Chuẩn ({forecast.row_beauty_score}đ — Nên Dùng)
                       </span>
                     )}
 

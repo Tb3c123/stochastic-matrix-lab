@@ -269,21 +269,32 @@ def compute_ticket_beauty_evaluation(
     strategy: str = "balanced"
 ) -> Dict[str, Any]:
     """
-    Evaluate a generated 5-row ticket across 5 quantitative pillars to determine
-    the 'Best Ticket of the Day' and the 'Best Row' within the ticket.
+    Evaluate a generated 5-row ticket against strict ABSOLUTE thresholds (5 Gates)
+    to determine WHETHER and WHEN a ticket or specific row qualifies as a
+    'Golden Playable Row / Ticket' worth playing in real life.
+    Does NOT force every ticket or draw period to have a 'best' row/ticket.
     """
     from collections import Counter
     is_power = game_code == "power_6_55"
-    gauss_target = 162.5 if is_power else 140.0
+    gauss_target = 163.0 if is_power else 140.0
+    strict_gauss_min = 148 if is_power else 126
+    strict_gauss_max = 178 if is_power else 154
+    min_span_req = 36 if is_power else 30
+    GOLDEN_ROW_MIN_SCORE = 93.0
+    GOLDEN_TICKET_MIN_SCORE = 91.0
 
     if not rows:
         return {
             "ticket_beauty_score": 70.0,
             "beauty_grade": "B",
-            "beauty_verdict": "Tiêu Chuẩn",
-            "best_row_index": 0,
-            "best_row_label": "Dãy A",
-            "best_row_score": 70.0,
+            "beauty_verdict": "Chưa Đạt Ngưỡng Sử Dụng",
+            "has_golden_signal": False,
+            "is_golden_ticket": False,
+            "golden_rows_count": 0,
+            "golden_rows": [],
+            "best_row_index": None,
+            "best_row_label": None,
+            "best_row_score": 0.0,
             "anchor_numbers": [],
             "high_numbers_count": 0,
             "distinct_specials_count": 0,
@@ -292,46 +303,94 @@ def compute_ticket_beauty_evaluation(
             "beauty_highlights": []
         }
 
-    # 1. Per-row scoring & Best Row identification
-    best_row_idx = 0
-    best_row_score = -1.0
-    best_tie_breaker = 9999.0
     row_audit_scores: List[float] = []
     row_forecast_scores: List[float] = []
     recommended_rows_count = 0
+    golden_rows: List[Dict[str, Any]] = []
+    top_golden_idx: Optional[int] = None
+    top_golden_score = -1.0
 
     for r_idx, r in enumerate(rows):
+        sorted_r = sorted(r)
         fc = row_forecasts[r_idx] if r_idx < len(row_forecasts) else {}
         sp = fc.get("special_number")
         audit = fc.get("audit")
         if not audit:
-            audit = audit_single_row_recommendation(game_code, r, sp)
+            audit = audit_single_row_recommendation(game_code, sorted_r, sp)
             fc["audit"] = audit
 
         a_score = float(audit.get("score", 82.0))
         f_score = float(fc.get("forecast_score", 82.0))
-        if audit.get("verdict_code") == "recommended":
+        is_recommended_audit = audit.get("verdict_code") == "recommended"
+        if is_recommended_audit:
             recommended_rows_count += 1
 
         row_audit_scores.append(a_score)
         row_forecast_scores.append(f_score)
 
-        high_cnt = sum(1 for n in r if n > 31)
-        anti_crowd_row_bonus = min(3.6, high_cnt * 1.2)
-        r_beauty = round(min(99.2, 0.62 * a_score + 0.34 * f_score + anti_crowd_row_bonus), 1)
+        # Calculate strict structural properties of this row
+        r_sum = sum(sorted_r)
+        even_cnt = sum(1 for n in sorted_r if n % 2 == 0)
+        decades_cnt = len(set(n // 10 for n in sorted_r))
+        r_span = sorted_r[-1] - sorted_r[0] if len(sorted_r) >= 2 else 0
+        consec_pairs = sum(1 for i in range(len(sorted_r) - 1) if sorted_r[i + 1] - sorted_r[i] == 1)
+        has_triplet = any(
+            sorted_r[i + 1] - sorted_r[i] == 1 and sorted_r[i + 2] - sorted_r[i + 1] == 1
+            for i in range(len(sorted_r) - 2)
+        )
+        high_cnt = sum(1 for n in sorted_r if n > 31)
+
+        # Bonus for strict Gauss sweet spot, 3C:3L parity, and anti-crowd numbers > 31
+        in_strict_gauss = strict_gauss_min <= r_sum <= strict_gauss_max
+        parity_perfect = even_cnt == 3 or (even_cnt in (2, 4) and abs(r_sum - gauss_target) <= 8)
+        spread_strict = decades_cnt >= 4 and r_span >= min_span_req and not has_triplet and consec_pairs <= 1
+        anti_crowd_strict = high_cnt >= 2
+        special_valid = (not is_power) or (sp is not None and sp not in sorted_r)
+
+        anti_crowd_row_bonus = min(3.6, high_cnt * 1.2) + (1.2 if even_cnt == 3 else 0.0) + (1.0 if in_strict_gauss else 0.0)
+        r_beauty = round(min(99.2, 0.60 * a_score + 0.34 * f_score + anti_crowd_row_bonus), 1)
+
+        # Strict 5-Gate check: ONLY rows passing ALL 5 gates + score >= 93.0 are Golden Playable Rows
+        failed_gates = []
+        if not in_strict_gauss:
+            failed_gates.append(f"Tổng {r_sum} ngoài vùng tâm hẹp ({strict_gauss_min}-{strict_gauss_max})")
+        if not parity_perfect:
+            failed_gates.append(f"Chẵn/Lẻ {even_cnt}C:{6-even_cnt}L chưa đạt chuẩn cân bằng tâm")
+        if not spread_strict:
+            failed_gates.append("Độ phủ đầu chục hoặc biên độ chưa tối ưu")
+        if not anti_crowd_strict:
+            failed_gates.append(f"Chỉ có {high_cnt} số > 31 (cần ≥ 2 số để chống chia giải)")
+        if not special_valid:
+            failed_gates.append("Thiếu bóng đặc biệt độc lập")
+
+        is_golden_row = (
+            is_recommended_audit
+            and len(failed_gates) == 0
+            and r_beauty >= GOLDEN_ROW_MIN_SCORE
+        )
+
         fc["row_beauty_score"] = r_beauty
-        fc["is_best_row"] = False
+        fc["is_golden_row"] = is_golden_row
+        fc["is_best_row"] = is_golden_row
+        fc["failed_golden_gates"] = failed_gates
 
-        gauss_dist = abs(sum(r) - gauss_target)
-        if r_beauty > best_row_score or (r_beauty == best_row_score and gauss_dist < best_tie_breaker):
-            best_row_score = r_beauty
-            best_row_idx = r_idx
-            best_tie_breaker = gauss_dist
+        if is_golden_row:
+            r_label = f"Dãy {chr(65 + r_idx)}"
+            golden_rows.append({
+                "row_index": r_idx,
+                "row_label": r_label,
+                "numbers": sorted_r,
+                "special_number": sp if is_power else None,
+                "row_beauty_score": r_beauty,
+                "sum": r_sum,
+                "parity": f"{even_cnt}C : {6 - even_cnt}L",
+                "high_numbers_count": high_cnt
+            })
+            if r_beauty > top_golden_score:
+                top_golden_score = r_beauty
+                top_golden_idx = r_idx
 
-    if best_row_idx < len(row_forecasts):
-        row_forecasts[best_row_idx]["is_best_row"] = True
-
-    best_row_label = f"Dãy {chr(65 + best_row_idx)}"
+    best_row_label = f"Dãy {chr(65 + top_golden_idx)}" if top_golden_idx is not None else None
 
     # Pillar 1: 4-Pillar Structural Audit Average (40% weight)
     avg_audit = sum(row_audit_scores) / len(row_audit_scores)
@@ -343,7 +402,6 @@ def compute_ticket_beauty_evaluation(
     freq_counter = Counter(all_nums)
     anchor_numbers = sorted([num for num, cnt in freq_counter.items() if cnt == 2])
 
-    # Ideal for 5 rows (30 picks) is 21..25 unique numbers + 2..5 anchor numbers
     if 21 <= unique_cnt <= 25:
         cov_base = 94.0
     elif 19 <= unique_cnt <= 27:
@@ -398,34 +456,55 @@ def compute_ticket_beauty_evaluation(
         1
     )
 
-    if ticket_beauty_score >= 92.0:
-        beauty_grade = "S+"
-        beauty_verdict = "Siêu Phẩm Tối Ưu Nhất"
-    elif ticket_beauty_score >= 88.5:
-        beauty_grade = "S"
-        beauty_verdict = "Vé Đẹp Xuất Sắc"
-    elif ticket_beauty_score >= 84.0:
-        beauty_grade = "A+"
-        beauty_verdict = "Khuyên Dùng Cao"
-    else:
-        beauty_grade = "A"
-        beauty_verdict = "Cấu Trúc Ổn Định"
+    # Strict Ticket Qualification: must have >= 1 Golden Row AND strong overall structure
+    has_golden_signal = len(golden_rows) > 0
+    is_golden_ticket = (
+        has_golden_signal
+        and recommended_rows_count >= 3
+        and 19 <= unique_cnt <= 26
+        and ticket_beauty_score >= GOLDEN_TICKET_MIN_SCORE
+    )
 
-    highlights = [
-        f"{recommended_rows_count}/{len(rows)} dãy đạt chuẩn tối ưu Gauss & Chẵn/Lẻ ({best_row_label} cao nhất: {best_row_score}đ)",
-        f"Bao phủ {unique_cnt} số độc lập"
-        + (f" • Số trụ hội tụ: {', '.join(f'{n:02d}' for n in anchor_numbers[:4])}" if anchor_numbers else ""),
-        f"Chống chia giải Độc Đắc: {high_numbers_count} vị trí số > 31"
-        + (f" • {distinct_specials_count} bóng ĐB độc lập" if is_power and distinct_specials_count > 0 else "")
-    ]
+    if is_golden_ticket and len(golden_rows) >= 2:
+        beauty_grade = "S+"
+        beauty_verdict = f"🔥 Tín Hiệu Vàng ({len(golden_rows)} Dãy Đẹp Nên Dùng)"
+    elif has_golden_signal:
+        beauty_grade = "S"
+        beauty_verdict = f"✨ Có {len(golden_rows)} Dãy Đẹp Đạt Chuẩn"
+    elif ticket_beauty_score >= 88.0:
+        beauty_grade = "A"
+        beauty_verdict = "Vé Khá (Chưa Có Dãy Đạt Ngưỡng Vàng)"
+    else:
+        beauty_grade = "B"
+        beauty_verdict = "Chưa Đạt Ngưỡng — Chỉ Theo Dõi"
+
+    if has_golden_signal:
+        g_labels = ", ".join(f"{gr['row_label']} ({gr['row_beauty_score']}đ)" for gr in golden_rows)
+        highlights = [
+            f"🔥 Đạt ngưỡng sử dụng: {g_labels} vượt qua toàn bộ 5 cổng kiểm định khắt khe",
+            f"Bao phủ {unique_cnt} số độc lập"
+            + (f" • Số trụ hội tụ: {', '.join(f'{n:02d}' for n in anchor_numbers[:4])}" if anchor_numbers else ""),
+            f"Chống chia giải Độc Đắc: {high_numbers_count} vị trí số > 31"
+            + (f" • {distinct_specials_count} bóng ĐB độc lập" if is_power and distinct_specials_count > 0 else "")
+        ]
+    else:
+        highlights = [
+            f"⏳ Vé này chưa có dãy nào vượt ngưỡng Vàng ≥ {GOLDEN_ROW_MIN_SCORE}đ (5 cổng Gauss hẹp + 3C:3L + chống chia giải)",
+            f"Cấu trúc hiện tại: {recommended_rows_count}/{len(rows)} dãy mức an toàn, bao phủ {unique_cnt} số",
+            "Khuyến nghị: Chỉ để hệ thống đối soát học ngầm, đợi kỳ/vé có tín hiệu Dãy Đẹp chuẩn để sử dụng"
+        ]
 
     return {
         "ticket_beauty_score": ticket_beauty_score,
         "beauty_grade": beauty_grade,
         "beauty_verdict": beauty_verdict,
-        "best_row_index": best_row_idx,
+        "has_golden_signal": has_golden_signal,
+        "is_golden_ticket": is_golden_ticket,
+        "golden_rows_count": len(golden_rows),
+        "golden_rows": golden_rows,
+        "best_row_index": top_golden_idx,
         "best_row_label": best_row_label,
-        "best_row_score": best_row_score,
+        "best_row_score": top_golden_score if top_golden_idx is not None else 0.0,
         "anchor_numbers": anchor_numbers,
         "high_numbers_count": high_numbers_count,
         "distinct_specials_count": distinct_specials_count,
@@ -585,6 +664,10 @@ async def list_tickets(
             "ticket_beauty_score": beauty_eval["ticket_beauty_score"],
             "beauty_grade": beauty_eval["beauty_grade"],
             "beauty_verdict": beauty_eval["beauty_verdict"],
+            "has_golden_signal": beauty_eval["has_golden_signal"],
+            "is_golden_ticket": beauty_eval["is_golden_ticket"],
+            "golden_rows_count": beauty_eval["golden_rows_count"],
+            "golden_rows": beauty_eval["golden_rows"],
             "best_row_index": beauty_eval["best_row_index"],
             "best_row_label": beauty_eval["best_row_label"],
             "best_row_score": beauty_eval["best_row_score"],
@@ -594,7 +677,7 @@ async def list_tickets(
             "created_at": t.created_at.isoformat()
         })
 
-    # Group by (game_code, target_draw_period) to rank tickets and mark Top #1 Best Ticket of the Period
+    # Group by (game_code, target_draw_period): only highlight tickets that actually have a Golden Signal
     from collections import defaultdict
     period_groups: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
     for item in data:
@@ -602,21 +685,23 @@ async def list_tickets(
         period_groups[p_key].append(item)
 
     for p_key, group_items in period_groups.items():
-        # Sort by ticket_beauty_score desc, then prefer hybrid_ai_learned on tie
         sorted_group = sorted(
             group_items,
             key=lambda x: (
+                1 if x.get("has_golden_signal") else 0,
+                x.get("golden_rows_count", 0),
                 x.get("ticket_beauty_score", 0.0),
-                1 if x.get("strategy") == "hybrid_ai_learned" else 0,
-                -x.get("id", 0)
+                1 if x.get("strategy") == "hybrid_ai_learned" else 0
             ),
             reverse=True
         )
         total_in_period = len(sorted_group)
+        period_golden_rows_total = sum(x.get("golden_rows_count", 0) for x in sorted_group)
         for rank_idx, g_item in enumerate(sorted_group):
             g_item["beauty_rank"] = rank_idx + 1
             g_item["period_tickets_count"] = total_in_period
-            g_item["is_best_ticket_of_period"] = (rank_idx == 0)
+            g_item["period_golden_rows_total"] = period_golden_rows_total
+            g_item["is_best_ticket_of_period"] = bool(g_item.get("has_golden_signal")) and (rank_idx == 0)
 
     return ResponseEnvelope(success=True, data=data)
 

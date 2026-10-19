@@ -278,6 +278,8 @@ export const SavedTicketsTracker: React.FC<SavedTicketsTrackerProps> = ({ gameCo
       totalPrize: number;
       winningTicketsCount: number;
       totalRows: number;
+      goldenRowsCount: number;
+      goldenTicketsCount: number;
     }> = {};
 
     filteredTickets.forEach((t) => {
@@ -289,11 +291,18 @@ export const SavedTicketsTracker: React.FC<SavedTicketsTrackerProps> = ({ gameCo
           tickets: [],
           totalPrize: 0,
           winningTicketsCount: 0,
-          totalRows: 0
+          totalRows: 0,
+          goldenRowsCount: 0,
+          goldenTicketsCount: 0
         };
       }
       groupsMap[key].tickets.push(t);
       groupsMap[key].totalRows += (t.rows_count || t.rows?.length || 0);
+      const gRows = t.golden_rows_count ?? t.predicted_analysis?.golden_rows_count ?? 0;
+      groupsMap[key].goldenRowsCount += gRows;
+      if (t.has_golden_signal || gRows > 0) {
+        groupsMap[key].goldenTicketsCount += 1;
+      }
       const prize = t.matched_results?.total_prize_vnd || 0;
       groupsMap[key].totalPrize += prize;
       if (prize > 0) {
@@ -303,6 +312,9 @@ export const SavedTicketsTracker: React.FC<SavedTicketsTrackerProps> = ({ gameCo
 
     Object.values(groupsMap).forEach((grp) => {
       grp.tickets.sort((tA, tB) => {
+        const gA = (tA.has_golden_signal ? 1 : 0);
+        const gB = (tB.has_golden_signal ? 1 : 0);
+        if (gB !== gA) return gB - gA;
         const sA = tA.ticket_beauty_score ?? tA.predicted_analysis?.ticket_beauty_score ?? 0;
         const sB = tB.ticket_beauty_score ?? tB.predicted_analysis?.ticket_beauty_score ?? 0;
         if (sB !== sA) return sB - sA;
@@ -331,15 +343,15 @@ export const SavedTicketsTracker: React.FC<SavedTicketsTrackerProps> = ({ gameCo
       ticket.ticket_beauty_score ?? analysis.ticket_beauty_score ?? beautyEval.ticket_beauty_score ?? 88.5;
     const beautyGrade =
       ticket.beauty_grade ?? beautyEval.beauty_grade ?? (ticketBeautyScore >= 92 ? "S+" : ticketBeautyScore >= 88.5 ? "S" : "A+");
-    const isBestOfPeriod = !!ticket.is_best_ticket_of_period;
-    const bestRowIdx = ticket.best_row_index ?? analysis.best_row_index ?? beautyEval.best_row_index ?? 0;
-    const bestRowLabel = ticket.best_row_label ?? analysis.best_row_label ?? beautyEval.best_row_label ?? "Dãy A";
+    const goldenRowsCount =
+      ticket.golden_rows_count ?? analysis.golden_rows_count ?? beautyEval.golden_rows_count ?? 0;
+    const hasGoldenSignal = !!(ticket.has_golden_signal ?? analysis.has_golden_signal ?? (goldenRowsCount > 0));
 
     return (
       <div
         key={ticket.id}
         className={`border rounded-2xl p-5 transition-all relative overflow-hidden ${
-          isBestOfPeriod
+          hasGoldenSignal
             ? "bg-gradient-to-br from-amber-950/25 via-slate-900 to-slate-900 border-amber-400/60 ring-1 ring-amber-400/30 shadow-lg shadow-amber-500/10"
             : isPending
             ? "bg-slate-800/30 border-slate-800 hover:border-slate-700"
@@ -351,10 +363,10 @@ export const SavedTicketsTracker: React.FC<SavedTicketsTrackerProps> = ({ gameCo
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
           {/* Header Info & Strategy Tag */}
           <div className="flex flex-wrap items-center gap-2.5">
-            {/* Best Ticket of the Day / Period Crown Badge */}
-            {isBestOfPeriod && (
+            {/* Golden Signal Badge — ONLY shown when ticket strictly passes the 5 Golden Gates */}
+            {hasGoldenSignal && (
               <span className="px-3 py-1 rounded-full text-xs font-black bg-gradient-to-r from-amber-400 to-yellow-300 text-slate-950 shadow-md shadow-amber-500/20 flex items-center gap-1">
-                👑 VÉ ĐẸP NHẤT KỲ #{ticket.target_draw_period} (TOP #1)
+                🔥 CÓ {goldenRowsCount} DÃY ĐẸP ĐẠT CHUẨN SỬ DỤNG
               </span>
             )}
 
@@ -386,18 +398,21 @@ export const SavedTicketsTracker: React.FC<SavedTicketsTrackerProps> = ({ gameCo
           <div className="flex flex-wrap items-center gap-2 text-xs">
             <div
               className={`px-3 py-1.5 rounded-xl border flex items-center gap-1.5 font-bold ${
-                isBestOfPeriod
+                hasGoldenSignal
                   ? "bg-amber-500/20 border-amber-400/50 text-amber-300"
                   : "bg-slate-800/90 border-slate-700/80 text-slate-300"
               }`}
-              title="Điểm đánh giá độ đẹp tổng hợp 5 trụ cột của vé trong ngày"
+              title="Điểm đánh giá độ đẹp tổng hợp 5 trụ cột của vé (Chỉ báo hiệu dùng khi có dãy ≥ 93đ đạt đủ 5 cổng)"
             >
               <Sparkles className="w-3.5 h-3.5 text-amber-400" />
               <span>
-                {ticket.beauty_rank ? `Hạng #${ticket.beauty_rank}/${ticket.period_tickets_count} • ` : ""}
-                Điểm Đẹp: <b className="text-amber-300 font-mono">{ticketBeautyScore}/100 ({beautyGrade})</b>
+                Điểm Hội Tụ: <b className="text-amber-300 font-mono">{ticketBeautyScore}/100 ({beautyGrade})</b>
               </span>
-              <span className="text-[11px] text-emerald-300 ml-1">• ★ {bestRowLabel}</span>
+              {hasGoldenSignal ? (
+                <span className="text-[11px] text-emerald-300 ml-1">• ★ {goldenRowsCount} dãy đạt chuẩn Vàng</span>
+              ) : (
+                <span className="text-[11px] text-slate-400 ml-1">• Chưa có dãy đạt ngưỡng Vàng</span>
+              )}
             </div>
 
             <div className="bg-slate-800/90 px-3 py-1.5 rounded-xl border border-slate-700/80 text-slate-300 flex items-center gap-1.5">
@@ -431,13 +446,13 @@ export const SavedTicketsTracker: React.FC<SavedTicketsTrackerProps> = ({ gameCo
             const audit = rowForecast?.audit;
             const rowKey = `${ticket.id}-${rIdx}`;
             const isAuditOpen = !!openRowAudits[rowKey];
-            const isBestRow = rowForecast?.is_best_row || rIdx === bestRowIdx;
+            const isGoldenRow = !!rowForecast?.is_golden_row;
 
             return (
               <div
                 key={rIdx}
                 className={`rounded-xl border transition-all overflow-hidden ${
-                  isBestRow
+                  isGoldenRow
                     ? "bg-gradient-to-r from-amber-950/25 via-slate-850/60 to-slate-850/60 border-amber-400/50"
                     : "bg-slate-850/50 border-slate-800/60"
                 }`}
@@ -447,7 +462,7 @@ export const SavedTicketsTracker: React.FC<SavedTicketsTrackerProps> = ({ gameCo
                   <div className="flex flex-wrap items-center gap-3">
                     <span
                       className={`w-7 h-7 rounded-lg text-xs font-bold flex items-center justify-center shrink-0 ${
-                        isBestRow
+                        isGoldenRow
                           ? "bg-gradient-to-br from-amber-400 to-yellow-500 text-slate-950 font-black"
                           : "bg-slate-800 text-slate-400"
                       }`}
@@ -455,9 +470,9 @@ export const SavedTicketsTracker: React.FC<SavedTicketsTrackerProps> = ({ gameCo
                       {String.fromCharCode(65 + rIdx)}
                     </span>
 
-                    {isBestRow && (
+                    {isGoldenRow && (
                       <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-amber-400/20 text-amber-300 border border-amber-400/40 shrink-0">
-                        👑 Dãy Đẹp Nhất ({rowForecast?.row_beauty_score || ticket.best_row_score || 94.0}đ)
+                        🔥 Dãy Đẹp Đạt Chuẩn ({rowForecast?.row_beauty_score || 94.0}đ — Nên Dùng)
                       </span>
                     )}
 
@@ -911,7 +926,7 @@ export const SavedTicketsTracker: React.FC<SavedTicketsTrackerProps> = ({ gameCo
             </div>
           </div>
 
-          {/* Date Pills for Quick Date Filtering */}
+          {/* Date Pills for Quick Date & Signal Filtering */}
           <div className="flex flex-wrap items-center gap-2 pt-1 max-h-36 overflow-y-auto">
             <button
               onClick={() => setSelectedDateFilter("all")}
@@ -923,6 +938,17 @@ export const SavedTicketsTracker: React.FC<SavedTicketsTrackerProps> = ({ gameCo
             >
               Tất Cả Ngày ({filteredTickets.length} vé)
             </button>
+            <button
+              onClick={() => setSelectedDateFilter(selectedDateFilter === "golden_only" ? "all" : "golden_only")}
+              className={`px-3 py-1.5 rounded-xl text-xs font-black transition-all cursor-pointer shrink-0 border flex items-center gap-1.5 ${
+                selectedDateFilter === "golden_only"
+                  ? "bg-gradient-to-r from-amber-400 to-yellow-300 text-slate-950 border-amber-300 shadow-md"
+                  : "bg-amber-500/15 text-amber-300 border-amber-400/40 hover:bg-amber-500/25"
+              }`}
+              title="Chỉ lọc những kỳ mở thưởng có xuất hiện Dãy Đẹp Tuyệt Đối (≥ 93đ, vượt qua cả 5 cổng kiểm định) đáng để sử dụng"
+            >
+              🔥 Chỉ Kỳ Có Tín Hiệu Dãy Đẹp ({dateGroups.filter(([_, g]) => g.goldenRowsCount > 0).length} kỳ)
+            </button>
             {dateGroups.map(([key, group]) => {
               const isSelected = selectedDateFilter === group.period;
               return (
@@ -932,6 +958,8 @@ export const SavedTicketsTracker: React.FC<SavedTicketsTrackerProps> = ({ gameCo
                   className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer shrink-0 border flex items-center gap-1.5 ${
                     isSelected
                       ? "bg-amber-500 text-slate-950 font-black border-amber-400 shadow-md"
+                      : group.goldenRowsCount > 0
+                      ? "bg-amber-950/30 text-amber-200 border-amber-500/40 hover:bg-amber-900/40"
                       : group.winningTicketsCount > 0
                       ? "bg-emerald-950/30 text-emerald-300 border-emerald-800/50 hover:bg-emerald-900/40"
                       : "bg-slate-850 text-slate-400 hover:text-white border-slate-800 hover:border-slate-700"
@@ -940,8 +968,11 @@ export const SavedTicketsTracker: React.FC<SavedTicketsTrackerProps> = ({ gameCo
                   <span>Kỳ #{group.period}</span>
                   <span className="text-[11px] opacity-80">({formatDate(group.date)})</span>
                   <span className="font-bold opacity-90">• {group.tickets.length} vé</span>
+                  {group.goldenRowsCount > 0 && (
+                    <span className="text-amber-300 font-black">🔥{group.goldenRowsCount} dãy đẹp</span>
+                  )}
                   {group.winningTicketsCount > 0 && (
-                    <span className="text-amber-400 font-black">🏆</span>
+                    <span className="text-emerald-400 font-black">🏆</span>
                   )}
                 </button>
               );
@@ -954,7 +985,13 @@ export const SavedTicketsTracker: React.FC<SavedTicketsTrackerProps> = ({ gameCo
       {viewMode === "grouped" ? (
         <div className="space-y-6">
           {dateGroups
-            .filter(([_, group]) => selectedDateFilter === "all" || group.period === selectedDateFilter)
+            .filter(([_, group]) =>
+              selectedDateFilter === "all"
+                ? true
+                : selectedDateFilter === "golden_only"
+                ? group.goldenRowsCount > 0
+                : group.period === selectedDateFilter
+            )
             .map(([key, group]) => {
               const isCollapsed = !!collapsedDates[group.period];
               return (
@@ -979,6 +1016,15 @@ export const SavedTicketsTracker: React.FC<SavedTicketsTrackerProps> = ({ gameCo
                           <span className="text-xs text-slate-300 font-semibold px-2 py-0.5 rounded-md bg-slate-800 border border-slate-700">
                             Ngày {formatDate(group.date)}
                           </span>
+                          {group.goldenRowsCount > 0 ? (
+                            <span className="text-xs font-black px-2.5 py-0.5 rounded-full bg-amber-400/20 text-amber-300 border border-amber-400/50">
+                              🔥 CÓ TÍN HIỆU: {group.goldenRowsCount} Dãy Đẹp Đạt Chuẩn (Trên {group.goldenTicketsCount} vé)
+                            </span>
+                          ) : (
+                            <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-slate-800/80 text-slate-400 border border-slate-700">
+                              ⏸️ Kỳ này không có dãy đạt ngưỡng Đẹp Tuyệt Đối
+                            </span>
+                          )}
                         </div>
                         <div className="text-xs text-slate-400 flex flex-wrap items-center gap-2 pt-1">
                           <span>{group.tickets.length} vé</span>
@@ -1025,7 +1071,13 @@ export const SavedTicketsTracker: React.FC<SavedTicketsTrackerProps> = ({ gameCo
         /* Flat View */
         <div className="space-y-4">
           {filteredTickets
-            .filter((t) => selectedDateFilter === "all" || t.target_draw_period === selectedDateFilter)
+            .filter((t) =>
+              selectedDateFilter === "all"
+                ? true
+                : selectedDateFilter === "golden_only"
+                ? !!(t.has_golden_signal || (t.golden_rows_count ?? 0) > 0)
+                : t.target_draw_period === selectedDateFilter
+            )
             .map((ticket) => renderTicketCard(ticket))}
         </div>
       )}

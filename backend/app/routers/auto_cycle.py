@@ -38,6 +38,9 @@ async def get_auto_cycle_status(
     latest_ticket_data = None
     latest_tickets_batch = []
     best_ai_ticket = None
+    playable_golden_rows = []
+    has_playable_signal = False
+
     if recent_tickets:
         from app.routers.tickets import compute_ticket_beauty_evaluation
         latest_period = recent_tickets[0].target_draw_period
@@ -52,12 +55,23 @@ async def get_auto_cycle_status(
                 row_forecasts=row_fcs,
                 strategy="hybrid_ai_learned"
             )
+            v_name = variant.get("variant_name", f"Vé #{idx + 1} • Core Hybrid AI")
+            for gr in beauty_eval.get("golden_rows", []):
+                playable_golden_rows.append({
+                    **gr,
+                    "ticket_id": t.id,
+                    "ticket_batch_index": idx + 1,
+                    "variant_name": v_name,
+                    "target_draw_period": t.target_draw_period,
+                    "target_draw_date": t.target_draw_date
+                })
+
             item = {
                 "id": t.id,
                 "batch_index": pa.get("batch_ticket_index", idx + 1),
                 "batch_total": pa.get("batch_ticket_total", len(same_period_tickets)),
                 "variant_code": variant.get("variant_code", "CORE_HYBRID"),
-                "variant_name": variant.get("variant_name", f"Vé #{idx + 1} • Core Hybrid AI"),
+                "variant_name": v_name,
                 "variant_focus": variant.get("focus", "Tối ưu trọng số Bayes + Gauss"),
                 "target_draw_period": t.target_draw_period,
                 "target_draw_date": t.target_draw_date,
@@ -67,6 +81,10 @@ async def get_auto_cycle_status(
                 "ticket_beauty_score": beauty_eval["ticket_beauty_score"],
                 "beauty_grade": beauty_eval["beauty_grade"],
                 "beauty_verdict": beauty_eval["beauty_verdict"],
+                "has_golden_signal": beauty_eval["has_golden_signal"],
+                "is_golden_ticket": beauty_eval["is_golden_ticket"],
+                "golden_rows_count": beauty_eval["golden_rows_count"],
+                "golden_rows": beauty_eval["golden_rows"],
                 "best_row_index": beauty_eval["best_row_index"],
                 "best_row_label": beauty_eval["best_row_label"],
                 "best_row_score": beauty_eval["best_row_score"],
@@ -76,18 +94,24 @@ async def get_auto_cycle_status(
             }
             latest_tickets_batch.append(item)
 
-        # Rank the AI tickets in this period by ticket_beauty_score desc
+        has_playable_signal = len(playable_golden_rows) > 0
         ranked_ai = sorted(
             latest_tickets_batch,
-            key=lambda x: (x["ticket_beauty_score"], -x["batch_index"]),
+            key=lambda x: (
+                1 if x["has_golden_signal"] else 0,
+                x["golden_rows_count"],
+                x["ticket_beauty_score"],
+                -x["batch_index"]
+            ),
             reverse=True
         )
         for r_idx, r_item in enumerate(ranked_ai):
             r_item["beauty_rank"] = r_idx + 1
-            r_item["is_best_ai_ticket"] = (r_idx == 0)
+            r_item["is_best_ai_ticket"] = bool(r_item["has_golden_signal"]) and (r_idx == 0)
 
-        best_ai_ticket = ranked_ai[0] if ranked_ai else latest_tickets_batch[0]
-        latest_ticket_data = best_ai_ticket
+        if has_playable_signal and ranked_ai and ranked_ai[0]["has_golden_signal"]:
+            best_ai_ticket = ranked_ai[0]
+        latest_ticket_data = best_ai_ticket or latest_tickets_batch[0]
 
     return ResponseEnvelope(
         success=True,
@@ -110,6 +134,8 @@ async def get_auto_cycle_status(
             "last_learned_draw_period": state.last_learned_draw_period,
             "last_run_at": state.last_run_at.isoformat() if state.last_run_at else None,
             "learning_logs": state.learning_logs or [],
+            "has_playable_signal": has_playable_signal,
+            "playable_golden_rows": playable_golden_rows,
             "latest_ai_ticket": latest_ticket_data,
             "best_ai_ticket": best_ai_ticket,
             "latest_ai_tickets": latest_tickets_batch
