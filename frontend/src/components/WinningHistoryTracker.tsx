@@ -66,6 +66,7 @@ export const WinningHistoryTracker: React.FC<WinningHistoryTrackerProps> = ({
   };
 
   const [expandedId, setExpandedId] = useState<number | null>(null);
+  const [showWinBreakdown, setShowWinBreakdown] = useState<boolean>(false);
 
   useEffect(() => {
     fetchWinningHistory();
@@ -86,6 +87,20 @@ export const WinningHistoryTracker: React.FC<WinningHistoryTrackerProps> = ({
   };
 
   const winningTickets: any[] = historyData?.winning_tickets || [];
+  const totalWinningRowsCount = winningTickets.reduce(
+    (acc, t) => acc + (t.winning_rows_count || (t.winning_rows ? t.winning_rows.length : 0)),
+    0
+  );
+  const megaWinCount = winningTickets.filter((t) => t.game_code === "mega_6_45").length;
+  const powerWinCount = winningTickets.filter((t) => t.game_code === "power_6_55").length;
+
+  const handleSelectWinningTicket = (ticketId: number) => {
+    setExpandedId(ticketId);
+    const el = document.getElementById(`winning-ticket-${ticketId}`);
+    if (el) {
+      el.scrollIntoView({ behavior: "smooth", block: "center" });
+    }
+  };
 
   const getTierBadge = (prizeName: string) => {
     const p = prizeName.toLowerCase();
@@ -198,7 +213,7 @@ export const WinningHistoryTracker: React.FC<WinningHistoryTrackerProps> = ({
         </div>
 
         {/* 4 KPI Cards */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mt-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mt-6">
           {/* Card 1: Total Won Amount */}
           <div className="bg-slate-850/80 border border-amber-500/30 rounded-2xl p-4 md:p-5 relative overflow-hidden group">
             <div className="flex items-center justify-between">
@@ -211,25 +226,51 @@ export const WinningHistoryTracker: React.FC<WinningHistoryTrackerProps> = ({
               {formatVND(summary.total_prize_vnd)}
             </div>
             <p className="text-[11px] text-slate-400 mt-1">
-              Từ {summary.total_winning_tickets} vé trúng hợp lệ
+              Từ {summary.total_winning_tickets} vé ({totalWinningRowsCount} dãy trúng)
             </p>
           </div>
 
-          {/* Card 2: Win Count */}
-          <div className="bg-slate-850/80 border border-slate-800 rounded-2xl p-4 md:p-5">
+          {/* Card 2: Interactive Win Count & Ticket Inspector */}
+          <button
+            type="button"
+            onClick={() => setShowWinBreakdown((prev) => !prev)}
+            className={`text-left rounded-2xl p-4 md:p-5 transition-all cursor-pointer relative overflow-hidden border ${
+              showWinBreakdown
+                ? "bg-emerald-950/40 border-emerald-400 ring-2 ring-emerald-500/30 shadow-lg shadow-emerald-500/10"
+                : "bg-slate-850/80 border-emerald-500/40 hover:border-emerald-400 hover:bg-slate-800/80 shadow-md"
+            }`}
+          >
             <div className="flex items-center justify-between">
-              <span className="text-xs font-semibold text-slate-400">Số Lần / Vé Trúng</span>
-              <div className="w-8 h-8 rounded-xl bg-emerald-500/10 text-emerald-400 flex items-center justify-center">
-                <Award className="w-4 h-4" />
+              <span className="text-xs font-bold text-emerald-300 flex items-center gap-1.5">
+                Số Lần / Vé Trúng
+                <span className="px-1.5 py-0.5 text-[10px] rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                  Nhấn xem
+                </span>
+              </span>
+              <div className="w-8 h-8 rounded-xl bg-emerald-500/15 text-emerald-400 flex items-center justify-center">
+                {showWinBreakdown ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
               </div>
             </div>
-            <div className="mt-2 text-xl md:text-2xl font-bold text-emerald-400 font-mono">
-              {summary.total_winning_tickets} <span className="text-xs text-slate-400 font-normal">vé</span>
+
+            <div className="mt-2 flex items-baseline gap-2.5">
+              <span className="text-xl md:text-2xl font-black text-emerald-400 font-mono">
+                {summary.total_winning_tickets} <span className="text-xs font-semibold text-emerald-300">vé</span>
+              </span>
+              <span className="text-slate-600">•</span>
+              <span className="text-sm font-bold text-amber-300 font-mono">
+                {totalWinningRowsCount} <span className="text-xs font-normal text-slate-300">dãy trúng</span>
+              </span>
             </div>
-            <p className="text-[11px] text-slate-400 mt-1">
-              Đã đối soát {summary.total_evaluated_tickets} vé
-            </p>
-          </div>
+
+            <div className="mt-2 flex flex-wrap items-center justify-between gap-1 text-[11px] text-slate-300 pt-1.5 border-t border-slate-800/80">
+              <span>
+                Mega: <b className="text-red-400">{megaWinCount}</b> • Power: <b className="text-amber-400">{powerWinCount}</b>
+              </span>
+              <span className="text-emerald-400 font-semibold underline underline-offset-2">
+                {showWinBreakdown ? "Đóng danh sách ▲" : "Xem vé nào trúng ▼"}
+              </span>
+            </div>
+          </button>
 
           {/* Card 3: Win Rate */}
           <div className="bg-slate-850/80 border border-slate-800 rounded-2xl p-4 md:p-5">
@@ -243,7 +284,7 @@ export const WinningHistoryTracker: React.FC<WinningHistoryTrackerProps> = ({
               {summary.win_rate_pct}%
             </div>
             <p className="text-[11px] text-slate-400 mt-1">
-              Hiệu suất đối soát thực tế
+              Trên tổng {summary.total_evaluated_tickets} vé đã đối soát
             </p>
           </div>
 
@@ -264,21 +305,126 @@ export const WinningHistoryTracker: React.FC<WinningHistoryTrackerProps> = ({
           </div>
         </div>
 
-        {/* Prize Tier Counter Pill Bar */}
+        {/* Interactive Drawer when user clicks "Số Lần / Vé Trúng" */}
+        {showWinBreakdown && winningTickets.length > 0 && (
+          <div className="mt-5 p-4 md:p-5 rounded-2xl bg-slate-950/90 border border-emerald-500/40 shadow-xl space-y-3 animate-in fade-in duration-200">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2.5 border-b border-slate-800">
+              <div className="flex items-center gap-2 text-xs md:text-sm font-bold text-emerald-300">
+                <Award className="w-4 h-4 text-emerald-400" />
+                <span>Danh Sách Tóm Tắt {winningTickets.length} Vé Trúng (Nhấn vào vé bất kỳ để nhảy tới & mở đủ 5 dãy):</span>
+              </div>
+              <span className="text-[11px] text-slate-400">
+                Tổng cộng <b className="text-amber-300">{totalWinningRowsCount} lần/dãy trúng giải</b>
+              </span>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2.5 max-h-72 overflow-y-auto pr-1">
+              {winningTickets.map((tItem, idx) => {
+                const sBadge = getStrategyBadge(tItem.strategy);
+                const wRows = tItem.winning_rows || [];
+                const isSelected = expandedId === tItem.id;
+                return (
+                  <button
+                    key={tItem.id || idx}
+                    type="button"
+                    onClick={() => handleSelectWinningTicket(tItem.id)}
+                    className={`text-left p-3 rounded-xl border transition-all cursor-pointer flex flex-col justify-between gap-2 ${
+                      isSelected
+                        ? "bg-emerald-900/30 border-emerald-400 ring-1 ring-emerald-400"
+                        : "bg-slate-900/90 border-slate-800 hover:border-emerald-500/50 hover:bg-slate-850"
+                    }`}
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-1.5">
+                        <span
+                          className={`px-2 py-0.5 rounded text-[10px] font-black uppercase ${
+                            tItem.game_code === "power_6_55"
+                              ? "bg-amber-500/20 text-amber-300 border border-amber-500/30"
+                              : "bg-red-500/20 text-red-300 border border-red-500/30"
+                          }`}
+                        >
+                          {tItem.game_code === "power_6_55" ? "6/55" : "6/45"}
+                        </span>
+                        <span className="text-xs font-bold text-white">
+                          Vé #{tItem.id} • Kỳ #{tItem.target_draw_period}
+                        </span>
+                      </div>
+                      <span className="text-xs font-mono font-bold text-amber-400">
+                        +{formatVND(tItem.total_prize_vnd)}
+                      </span>
+                    </div>
+
+                    <div className="flex flex-wrap items-center justify-between gap-1 text-[11px] text-slate-400">
+                      <span>Ngày: <b className="text-slate-200">{tItem.target_draw_date}</b></span>
+                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${sBadge.cls}`}>
+                        {sBadge.label}
+                      </span>
+                    </div>
+
+                    <div className="flex flex-wrap items-center gap-1.5 pt-1 border-t border-slate-800/80">
+                      {wRows.map((wr: any, wIdx: number) => (
+                        <span
+                          key={wIdx}
+                          className="px-2 py-0.5 rounded bg-emerald-500/15 border border-emerald-500/30 text-[10px] font-bold text-emerald-300"
+                        >
+                          {wr.row_label || `Dãy ${String.fromCharCode(65 + (wr.row_index || wIdx))}`}: {wr.prize_name} ({wr.match_count}/6 số{wr.matched_special ? " + ĐB" : ""})
+                        </span>
+                      ))}
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* Clickable Prize Tier Counter Pill Bar */}
         <div className="mt-5 pt-4 border-t border-slate-800/80 flex flex-wrap items-center gap-2 text-xs">
-          <span className="text-slate-400 font-semibold mr-1">Phân bố giải thưởng:</span>
-          <span className="px-2.5 py-1 rounded-lg bg-slate-800 border border-slate-700 text-slate-300">
+          <span className="text-slate-400 font-semibold mr-1">Phân bố giải thưởng (Nhấn để lọc):</span>
+          <button
+            type="button"
+            onClick={() => setSelectedTierFilter(selectedTierFilter === "jackpot" ? "all" : "jackpot")}
+            className={`px-2.5 py-1 rounded-lg border transition-all cursor-pointer ${
+              selectedTierFilter === "jackpot"
+                ? "bg-amber-500/25 border-amber-400 text-white ring-1 ring-amber-400"
+                : "bg-slate-800 border-slate-700 text-slate-300 hover:border-amber-500/50"
+            }`}
+          >
             Jackpot: <b className="text-amber-400">{(summary.tier_counts?.jackpot_1 || 0) + (summary.tier_counts?.jackpot_2 || 0)}</b>
-          </span>
-          <span className="px-2.5 py-1 rounded-lg bg-slate-800 border border-slate-700 text-slate-300">
+          </button>
+          <button
+            type="button"
+            onClick={() => setSelectedTierFilter(selectedTierFilter === "first" ? "all" : "first")}
+            className={`px-2.5 py-1 rounded-lg border transition-all cursor-pointer ${
+              selectedTierFilter === "first"
+                ? "bg-red-500/25 border-red-400 text-white ring-1 ring-red-400"
+                : "bg-slate-800 border-slate-700 text-slate-300 hover:border-red-500/50"
+            }`}
+          >
             Giải Nhất: <b className="text-red-400">{summary.tier_counts?.first || 0}</b>
-          </span>
-          <span className="px-2.5 py-1 rounded-lg bg-slate-800 border border-slate-700 text-slate-300">
+          </button>
+          <button
+            type="button"
+            onClick={() => setSelectedTierFilter(selectedTierFilter === "second" ? "all" : "second")}
+            className={`px-2.5 py-1 rounded-lg border transition-all cursor-pointer ${
+              selectedTierFilter === "second"
+                ? "bg-sky-500/25 border-sky-400 text-white ring-1 ring-sky-400"
+                : "bg-slate-800 border-slate-700 text-slate-300 hover:border-sky-500/50"
+            }`}
+          >
             Giải Nhì: <b className="text-sky-400">{summary.tier_counts?.second || 0}</b>
-          </span>
-          <span className="px-2.5 py-1 rounded-lg bg-slate-800 border border-slate-700 text-slate-300">
+          </button>
+          <button
+            type="button"
+            onClick={() => setSelectedTierFilter(selectedTierFilter === "third" ? "all" : "third")}
+            className={`px-2.5 py-1 rounded-lg border transition-all cursor-pointer ${
+              selectedTierFilter === "third"
+                ? "bg-emerald-500/25 border-emerald-400 text-white ring-1 ring-emerald-400"
+                : "bg-slate-800 border-slate-700 text-slate-300 hover:border-emerald-500/50"
+            }`}
+          >
             Giải Ba: <b className="text-emerald-400">{summary.tier_counts?.third || 0}</b>
-          </span>
+          </button>
         </div>
       </div>
 
@@ -376,13 +522,19 @@ export const WinningHistoryTracker: React.FC<WinningHistoryTrackerProps> = ({
             const isExpanded = expandedId === ticket.id;
             const stratBadge = getStrategyBadge(ticket.strategy);
             const winningRows = ticket.winning_rows || [];
+            const allRowsEval = ticket.all_rows_evaluation || [];
             const actualWinningNumbers = ticket.actual_winning_numbers || [];
             const actualSpecialNumber = ticket.actual_special_number;
 
             return (
               <div
+                id={`winning-ticket-${ticket.id}`}
                 key={ticket.id}
-                className="bg-slate-900 border border-amber-500/30 hover:border-amber-500/50 rounded-2xl p-5 md:p-6 transition-all shadow-lg shadow-amber-500/5 relative overflow-hidden"
+                className={`bg-slate-900 border rounded-2xl p-5 md:p-6 transition-all shadow-lg relative overflow-hidden ${
+                  isExpanded
+                    ? "border-emerald-400 ring-2 ring-emerald-500/20 shadow-emerald-500/10"
+                    : "border-amber-500/30 hover:border-amber-500/50 shadow-amber-500/5"
+                }`}
               >
                 {/* Subtle gold gradient accent on left */}
                 <div className="absolute top-0 left-0 bottom-0 w-1.5 bg-gradient-to-b from-amber-400 via-emerald-400 to-amber-600"></div>
@@ -390,6 +542,11 @@ export const WinningHistoryTracker: React.FC<WinningHistoryTrackerProps> = ({
                 {/* Top Header of the Winning Ticket */}
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-slate-800">
                   <div className="flex flex-wrap items-center gap-2.5">
+                    {/* Ticket ID Badge */}
+                    <span className="px-2.5 py-1 rounded-lg bg-slate-800 border border-slate-700 text-xs font-mono font-bold text-amber-300">
+                      Vé #{ticket.id}
+                    </span>
+
                     {/* Game Badge */}
                     <span
                       className={`px-3 py-1 rounded-full text-xs font-black uppercase tracking-wider ${
@@ -418,20 +575,26 @@ export const WinningHistoryTracker: React.FC<WinningHistoryTrackerProps> = ({
                     </span>
                   </div>
 
-                  {/* Total Ticket Prize Won */}
-                  <div className="flex items-center gap-3">
+                  {/* Total Ticket Prize Won & Full 5-Row Toggle Button */}
+                  <div className="flex flex-wrap items-center gap-2.5">
                     <div className="bg-gradient-to-r from-emerald-500/20 to-teal-500/20 border border-emerald-500/40 px-3.5 py-1.5 rounded-xl flex items-center gap-1.5">
                       <Trophy className="w-4 h-4 text-amber-400" />
                       <span className="text-xs text-emerald-300 font-bold">
-                        Trúng {formatVND(ticket.total_prize_vnd)}
+                        Trúng {formatVND(ticket.total_prize_vnd)} ({winningRows.length}/{ticket.rows_count || 5} dãy)
                       </span>
                     </div>
 
                     <button
+                      type="button"
                       onClick={() => setExpandedId(isExpanded ? null : ticket.id)}
-                      className="p-1.5 rounded-xl text-slate-400 hover:text-white bg-slate-800 hover:bg-slate-700 border border-slate-700 transition-all cursor-pointer"
-                      title="Xem chi tiết các dãy và đối chiếu kết quả"
+                      className={`px-3 py-1.5 rounded-xl text-xs font-bold border flex items-center gap-1.5 transition-all cursor-pointer ${
+                        isExpanded
+                          ? "bg-emerald-500 text-slate-950 border-emerald-400"
+                          : "text-slate-300 hover:text-white bg-slate-800 hover:bg-slate-700 border-slate-700"
+                      }`}
+                      title="Xem chi tiết toàn bộ 5 dãy của vé này"
                     >
+                      <span>{isExpanded ? "Thu gọn vé" : "Xem đủ 5 dãy của vé"}</span>
                       {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
                     </button>
                   </div>
@@ -471,27 +634,38 @@ export const WinningHistoryTracker: React.FC<WinningHistoryTrackerProps> = ({
                   </span>
                 </div>
 
-                {/* Winning Rows List */}
-                <div className="mt-4 space-y-3">
-                  {winningRows.map((row: any, rIdx: number) => {
+                {/* Winning Rows List (or All 5 Rows when expanded) */}
+                <div className="mt-4 space-y-2.5">
+                  {(isExpanded && allRowsEval.length > 0 ? allRowsEval : winningRows).map((row: any, rIdx: number) => {
                     const rowNums: number[] = row.numbers || [];
                     const matchedNums: number[] = row.matched_numbers || [];
-                    const tierBadge = getTierBadge(row.prize_name || "Giải Thưởng");
+                    const isWinningRow = (row.prize_amount || 0) > 0;
+                    const tierBadge = getTierBadge(row.prize_name || "Không trúng");
 
                     return (
                       <div
                         key={rIdx}
-                        className="bg-slate-850/50 border border-amber-500/20 rounded-xl p-3 flex flex-col md:flex-row md:items-center justify-between gap-3"
+                        className={`rounded-xl p-3 flex flex-col md:flex-row md:items-center justify-between gap-3 border transition-all ${
+                          isWinningRow
+                            ? "bg-slate-850/70 border-amber-500/35 shadow-sm"
+                            : "bg-slate-900/50 border-slate-800/80 opacity-75"
+                        }`}
                       >
                         <div className="flex flex-wrap items-center gap-3">
                           {/* Row Label */}
-                          <span className="w-7 h-7 rounded-lg bg-gradient-to-br from-amber-500 to-red-600 text-white text-xs font-bold flex items-center justify-center shrink-0">
-                            {row.row_label || `Dãy ${String.fromCharCode(65 + (row.row_index || rIdx))}`}
+                          <span
+                            className={`w-7 h-7 rounded-lg text-xs font-bold flex items-center justify-center shrink-0 ${
+                              isWinningRow
+                                ? "bg-gradient-to-br from-amber-500 to-red-600 text-white"
+                                : "bg-slate-800 text-slate-400 border border-slate-700"
+                            }`}
+                          >
+                            {row.row_label || `Dãy ${String.fromCharCode(65 + (row.row_index ?? rIdx))}`}
                           </span>
 
                           {/* Prize Tag */}
                           <span className={`px-2.5 py-0.5 rounded-full text-xs border shrink-0 ${tierBadge.cls}`}>
-                            {tierBadge.label} • {formatVND(row.prize_amount)}
+                            {isWinningRow ? `${tierBadge.label} • ${formatVND(row.prize_amount)}` : "Không trúng giải"}
                           </span>
 
                           {/* 6 Ball Numbers */}
@@ -531,11 +705,11 @@ export const WinningHistoryTracker: React.FC<WinningHistoryTrackerProps> = ({
 
                         {/* Match count note */}
                         <div className="text-xs text-right font-medium text-slate-400 flex items-center gap-1.5 md:self-center">
-                          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                          <CheckCircle2 className={`w-3.5 h-3.5 ${isWinningRow ? "text-emerald-400" : "text-slate-600"}`} />
                           <span>
                             Trùng <b className="text-white">{row.match_count}/6 số</b>
                             {row.matched_special && <b className="text-amber-400"> + Số ĐB ★</b>}
-                            {" "}({matchedNums.map((n: number) => (n < 10 ? `0${n}` : n)).join(", ")})
+                            {matchedNums.length > 0 && ` (${matchedNums.map((n: number) => (n < 10 ? `0${n}` : n)).join(", ")})`}
                           </span>
                         </div>
                       </div>
@@ -544,17 +718,15 @@ export const WinningHistoryTracker: React.FC<WinningHistoryTrackerProps> = ({
                 </div>
 
                 {/* Expanded Details: Learning feedback */}
-                {isExpanded && (
+                {isExpanded && ticket.learning_feedback && (
                   <div className="mt-4 pt-4 border-t border-slate-800 space-y-3 text-xs animate-in fade-in duration-200">
-                    {ticket.learning_feedback && (
-                      <div className="p-3 bg-indigo-950/20 border border-indigo-500/30 rounded-xl text-indigo-300 flex items-start gap-2">
-                        <Zap className="w-4 h-4 text-indigo-400 shrink-0 mt-0.5" />
-                        <div>
-                          <b className="text-white block mb-0.5">Phản hồi học hỏi thuật toán:</b>
-                          {ticket.learning_feedback}
-                        </div>
+                    <div className="p-3 bg-indigo-950/20 border border-indigo-500/30 rounded-xl text-indigo-300 flex items-start gap-2">
+                      <Zap className="w-4 h-4 text-indigo-400 shrink-0 mt-0.5" />
+                      <div>
+                        <b className="text-white block mb-0.5">Phản hồi học hỏi thuật toán:</b>
+                        {ticket.learning_feedback}
                       </div>
-                    )}
+                    </div>
                   </div>
                 )}
               </div>
