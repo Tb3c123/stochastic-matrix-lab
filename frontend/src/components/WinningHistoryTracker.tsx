@@ -16,7 +16,8 @@ import {
   ChevronUp,
   Target,
   Zap,
-  ArrowRight
+  ArrowRight,
+  Wallet
 } from "lucide-react";
 
 interface WinningHistoryTrackerProps {
@@ -78,13 +79,23 @@ export const WinningHistoryTracker: React.FC<WinningHistoryTrackerProps> = ({
 
   const summary = historyData?.summary || {
     total_evaluated_tickets: 0,
+    total_evaluated_rows: 0,
+    row_cost_vnd: 10000,
+    total_spent_vnd: 0,
     total_winning_tickets: 0,
     total_prize_vnd: 0,
+    net_profit_vnd: 0,
     win_rate_pct: 0,
     highest_prize_name: "Chưa có",
     highest_prize_amount: 0,
     tier_counts: { jackpot_1: 0, jackpot_2: 0, first: 0, second: 0, third: 0 }
   };
+
+  const ROW_COST_VND = summary.row_cost_vnd || 10000;
+  const totalEvaluatedRows =
+    summary.total_evaluated_rows || (summary.total_evaluated_tickets || 0) * 5;
+  const totalSpentVnd =
+    summary.total_spent_vnd || totalEvaluatedRows * ROW_COST_VND;
 
   const winningTickets: any[] = historyData?.winning_tickets || [];
   const totalWinningRowsCount = winningTickets.reduce(
@@ -212,8 +223,8 @@ export const WinningHistoryTracker: React.FC<WinningHistoryTrackerProps> = ({
           </div>
         </div>
 
-        {/* 4 KPI Cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mt-6">
+        {/* 5 KPI Cards */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 mt-6">
           {/* Card 1: Total Won Amount */}
           <div className="bg-slate-850/80 border border-amber-500/30 rounded-2xl p-4 md:p-5 relative overflow-hidden group">
             <div className="flex items-center justify-between">
@@ -230,7 +241,23 @@ export const WinningHistoryTracker: React.FC<WinningHistoryTrackerProps> = ({
             </p>
           </div>
 
-          {/* Card 2: Interactive Win Count & Ticket Inspector */}
+          {/* Card 2: Total Amount Spent (Tiêu Hao) */}
+          <div className="bg-slate-850/80 border border-rose-500/30 rounded-2xl p-4 md:p-5 relative overflow-hidden">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-semibold text-rose-300">Số Tiền Đã Tiêu Hao</span>
+              <div className="w-8 h-8 rounded-xl bg-rose-500/10 text-rose-400 flex items-center justify-center">
+                <Wallet className="w-4 h-4" />
+              </div>
+            </div>
+            <div className="mt-2 text-xl md:text-2xl font-black text-rose-400 font-mono tracking-tight">
+              {formatVND(totalSpentVnd)}
+            </div>
+            <p className="text-[11px] text-slate-400 mt-1">
+              {summary.total_evaluated_tickets} vé ({totalEvaluatedRows} dãy × 10.000 đ)
+            </p>
+          </div>
+
+          {/* Card 3: Interactive Win Count & Ticket Inspector */}
           <button
             type="button"
             onClick={() => setShowWinBreakdown((prev) => !prev)}
@@ -272,7 +299,7 @@ export const WinningHistoryTracker: React.FC<WinningHistoryTrackerProps> = ({
             </div>
           </button>
 
-          {/* Card 3: Win Rate */}
+          {/* Card 4: Win Rate */}
           <div className="bg-slate-850/80 border border-slate-800 rounded-2xl p-4 md:p-5">
             <div className="flex items-center justify-between">
               <span className="text-xs font-semibold text-slate-400">Tỷ Lệ Vé Trúng</span>
@@ -288,7 +315,7 @@ export const WinningHistoryTracker: React.FC<WinningHistoryTrackerProps> = ({
             </p>
           </div>
 
-          {/* Card 4: Highest Prize */}
+          {/* Card 5: Highest Prize */}
           <div className="bg-slate-850/80 border border-slate-800 rounded-2xl p-4 md:p-5">
             <div className="flex items-center justify-between">
               <span className="text-xs font-semibold text-slate-400">Giải Lớn Nhất</span>
@@ -314,7 +341,7 @@ export const WinningHistoryTracker: React.FC<WinningHistoryTrackerProps> = ({
                 <span>Danh Sách Tóm Tắt {winningTickets.length} Vé Trúng (Nhấn vào vé bất kỳ để nhảy tới & mở đủ 5 dãy):</span>
               </div>
               <span className="text-[11px] text-slate-400">
-                Tổng cộng <b className="text-amber-300">{totalWinningRowsCount} lần/dãy trúng giải</b>
+                Tổng cộng <b className="text-amber-300">{totalWinningRowsCount} lần/dãy trúng giải</b> • Tiêu hao toàn bộ: <b className="text-rose-400">{formatVND(totalSpentVnd)}</b>
               </span>
             </div>
 
@@ -323,6 +350,8 @@ export const WinningHistoryTracker: React.FC<WinningHistoryTrackerProps> = ({
                 const sBadge = getStrategyBadge(tItem.strategy);
                 const wRows = tItem.winning_rows || [];
                 const isSelected = expandedId === tItem.id;
+                const tRowsCount = tItem.rows_count || 5;
+                const tCostVnd = tItem.ticket_cost_vnd || tRowsCount * ROW_COST_VND;
                 return (
                   <button
                     key={tItem.id || idx}
@@ -349,9 +378,14 @@ export const WinningHistoryTracker: React.FC<WinningHistoryTrackerProps> = ({
                           Vé #{tItem.id} • Kỳ #{tItem.target_draw_period}
                         </span>
                       </div>
-                      <span className="text-xs font-mono font-bold text-amber-400">
-                        +{formatVND(tItem.total_prize_vnd)}
-                      </span>
+                      <div className="text-right">
+                        <span className="text-xs font-mono font-bold text-amber-400 block">
+                          +{formatVND(tItem.total_prize_vnd)}
+                        </span>
+                        <span className="text-[10px] font-mono text-rose-400/90 block">
+                          Vốn: -{formatVND(tCostVnd)} ({tRowsCount} dãy)
+                        </span>
+                      </div>
                     </div>
 
                     <div className="flex flex-wrap items-center justify-between gap-1 text-[11px] text-slate-400">
@@ -575,8 +609,15 @@ export const WinningHistoryTracker: React.FC<WinningHistoryTrackerProps> = ({
                     </span>
                   </div>
 
-                  {/* Total Ticket Prize Won & Full 5-Row Toggle Button */}
-                  <div className="flex flex-wrap items-center gap-2.5">
+                  {/* Total Ticket Cost, Prize Won & Full 5-Row Toggle Button */}
+                  <div className="flex flex-wrap items-center gap-2">
+                    <div className="bg-rose-500/10 border border-rose-500/30 px-3 py-1.5 rounded-xl flex items-center gap-1.5">
+                      <Wallet className="w-3.5 h-3.5 text-rose-400" />
+                      <span className="text-xs text-rose-300 font-semibold">
+                        Tiêu hao: {formatVND(ticket.ticket_cost_vnd || (ticket.rows_count || 5) * ROW_COST_VND)} ({ticket.rows_count || 5} dãy × 10.000 đ)
+                      </span>
+                    </div>
+
                     <div className="bg-gradient-to-r from-emerald-500/20 to-teal-500/20 border border-emerald-500/40 px-3.5 py-1.5 rounded-xl flex items-center gap-1.5">
                       <Trophy className="w-4 h-4 text-amber-400" />
                       <span className="text-xs text-emerald-300 font-bold">

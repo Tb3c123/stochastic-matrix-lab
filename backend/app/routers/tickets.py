@@ -465,7 +465,10 @@ async def get_winning_history(
     res = await db.execute(query)
     evaluated_tickets = res.scalars().all()
 
+    ROW_COST_VND = 10_000
     total_evaluated = len(evaluated_tickets)
+    total_evaluated_rows = 0
+    total_spent_vnd = 0
     total_winning = 0
     total_prize = 0
     highest_prize_amount = 0
@@ -482,6 +485,11 @@ async def get_winning_history(
     winning_tickets_data = []
 
     for t in evaluated_tickets:
+        t_rows_count = len(t.rows_data) if t.rows_data else 5
+        t_cost_vnd = t_rows_count * ROW_COST_VND
+        total_evaluated_rows += t_rows_count
+        total_spent_vnd += t_cost_vnd
+
         mr = t.matched_results or {}
         prize = mr.get("total_prize_vnd", 0)
         if prize <= 0:
@@ -545,11 +553,14 @@ async def get_winning_history(
             "target_draw_period": t.target_draw_period,
             "target_draw_date": t.target_draw_date,
             "created_at": t.created_at.isoformat(),
+            "ticket_cost_vnd": t_cost_vnd,
+            "row_cost_vnd": ROW_COST_VND,
             "total_prize_vnd": prize,
+            "net_profit_vnd": prize - t_cost_vnd,
             "best_match_count": mr.get("best_match_count", 0),
             "actual_winning_numbers": actual_win_nums,
             "actual_special_number": actual_sp_num,
-            "rows_count": len(t.rows_data),
+            "rows_count": t_rows_count,
             "winning_rows_count": len(winning_rows),
             "winning_rows": winning_rows,
             "all_rows_evaluation": rows_eval,
@@ -563,8 +574,12 @@ async def get_winning_history(
         data={
             "summary": {
                 "total_evaluated_tickets": total_evaluated,
+                "total_evaluated_rows": total_evaluated_rows,
+                "row_cost_vnd": ROW_COST_VND,
+                "total_spent_vnd": total_spent_vnd,
                 "total_winning_tickets": total_winning,
                 "total_prize_vnd": total_prize,
+                "net_profit_vnd": total_prize - total_spent_vnd,
                 "win_rate_pct": win_rate,
                 "highest_prize_name": highest_prize_name,
                 "highest_prize_amount": highest_prize_amount,
@@ -815,7 +830,7 @@ async def evaluate_pending_tickets_core(
                 first_ticket = pending_tickets[0]
                 game_code_target = first_ticket.game_code
                 d_res = await db.execute(
-                    select(DrawResult).order_by(DrawResult.id.desc()).limit(1)
+                    select(DrawResult).order_by(DrawResult.draw_period.desc()).limit(1)
                 )
                 last_draw = d_res.scalar_one_or_none()
                 if last_draw:
