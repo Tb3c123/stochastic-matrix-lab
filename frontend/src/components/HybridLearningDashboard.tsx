@@ -37,7 +37,9 @@ export const HybridLearningDashboard: React.FC<HybridLearningProps> = ({
       const json = await res.json();
       if (json.success && json.data) {
         setStatusData(json.data);
-        setActiveTicketIdx(0);
+        const batch: any[] = json.data.latest_ai_tickets || [];
+        const bestIdx = batch.findIndex((t: any) => t.is_best_ai_ticket);
+        setActiveTicketIdx(bestIdx >= 0 ? bestIdx : 0);
       }
     } catch (e) {
       console.error("Fetch auto cycle status failed:", e);
@@ -59,6 +61,11 @@ export const HybridLearningDashboard: React.FC<HybridLearningProps> = ({
       : statusData.latest_ai_ticket
       ? [statusData.latest_ai_ticket]
       : [];
+  const bestTicketIdx = latestAiTickets.findIndex((t: any) => t.is_best_ai_ticket);
+  const bestAiTicket =
+    statusData.best_ai_ticket ||
+    (bestTicketIdx >= 0 ? latestAiTickets[bestTicketIdx] : latestAiTickets[0]) ||
+    null;
   const selectedTicket = latestAiTickets[activeTicketIdx] || latestAiTickets[0] || null;
   const learningLogs = statusData.learning_logs || [];
   const banditReward = Math.round(statusData.bandit_cumulative_reward || 0);
@@ -275,22 +282,90 @@ export const HybridLearningDashboard: React.FC<HybridLearningProps> = ({
             </span>
           </div>
 
+          {/* Best Ticket of the Day Spotlight Card */}
+          {bestAiTicket && (
+            <div className="bg-gradient-to-r from-amber-500/15 via-slate-900 to-emerald-500/10 border border-amber-400/50 rounded-2xl p-4 shadow-lg shadow-amber-500/5 space-y-2.5">
+              <div className="flex flex-col md:flex-row md:items-center justify-between gap-2">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="px-2.5 py-1 rounded-lg bg-gradient-to-r from-amber-400 to-yellow-300 text-slate-950 font-black text-xs flex items-center gap-1 shadow">
+                    👑 VÉ ĐẸP NHẤT HÔM NAY (TOP #1 KHUYÊN DÙNG)
+                  </span>
+                  <span className="text-xs md:text-sm font-extrabold text-white">
+                    {bestAiTicket.variant_name || "Vé #1 • Core Hybrid AI"} (Vé #{bestAiTicket.id})
+                  </span>
+                  <span className="px-2 py-0.5 rounded-full text-[11px] font-mono font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">
+                    Điểm Đẹp: {bestAiTicket.ticket_beauty_score || 92.5}/100 ({bestAiTicket.beauty_grade || "S+"})
+                  </span>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-amber-300 font-bold">
+                    ★ Dãy đẹp nhất vé: <b className="text-white">{bestAiTicket.best_row_label || "Dãy A"} ({bestAiTicket.best_row_score || 94.0}đ)</b>
+                  </span>
+                  {bestTicketIdx >= 0 && activeTicketIdx !== bestTicketIdx && (
+                    <button
+                      type="button"
+                      onClick={() => setActiveTicketIdx(bestTicketIdx)}
+                      className="px-2.5 py-1 rounded-lg bg-amber-400 hover:bg-amber-300 text-slate-950 font-bold text-xs cursor-pointer transition-all"
+                    >
+                      Xem Vé Đẹp Nhất →
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {bestAiTicket.beauty_highlights && bestAiTicket.beauty_highlights.length > 0 && (
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-2 pt-1">
+                  {bestAiTicket.beauty_highlights.map((hl: string, hIdx: number) => (
+                    <div
+                      key={hIdx}
+                      className="text-[11px] text-slate-200 bg-slate-950/60 border border-slate-800/80 rounded-xl px-3 py-1.5 flex items-center gap-1.5"
+                    >
+                      <Sparkles className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                      <span>{hl}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Multi-Ticket Selector Tabs when > 1 ticket generated */}
           {latestAiTickets.length > 1 && (
             <div className="flex flex-wrap items-center gap-2">
-              {latestAiTickets.map((tItem: any, idx: number) => (
-                <button
-                  key={tItem.id || idx}
-                  onClick={() => setActiveTicketIdx(idx)}
-                  className={`px-3.5 py-2 rounded-xl text-xs font-bold border transition-all flex items-center gap-2 ${
-                    activeTicketIdx === idx
-                      ? "bg-violet-600 text-white border-violet-400 shadow-lg shadow-violet-600/20"
-                      : "bg-slate-900/90 text-slate-400 border-slate-800 hover:border-slate-700 hover:text-slate-200"
-                  }`}
-                >
-                  <span>{tItem.variant_name || `Vé #${idx + 1}`}</span>
-                </button>
-              ))}
+              {latestAiTickets.map((tItem: any, idx: number) => {
+                const isBest = !!tItem.is_best_ai_ticket;
+                const isSelected = activeTicketIdx === idx;
+                return (
+                  <button
+                    key={tItem.id || idx}
+                    onClick={() => setActiveTicketIdx(idx)}
+                    className={`px-3.5 py-2 rounded-xl text-xs font-bold border transition-all flex items-center gap-2 cursor-pointer ${
+                      isSelected
+                        ? isBest
+                          ? "bg-gradient-to-r from-amber-500 to-yellow-400 text-slate-950 border-amber-300 shadow-lg shadow-amber-500/20 font-black"
+                          : "bg-violet-600 text-white border-violet-400 shadow-lg shadow-violet-600/20"
+                        : isBest
+                        ? "bg-amber-500/15 text-amber-300 border-amber-500/40 hover:bg-amber-500/25"
+                        : "bg-slate-900/90 text-slate-400 border-slate-800 hover:border-slate-700 hover:text-slate-200"
+                    }`}
+                  >
+                    {isBest && <span>👑 TOP #1</span>}
+                    <span>{tItem.variant_name || `Vé #${idx + 1}`}</span>
+                    {tItem.ticket_beauty_score && (
+                      <span
+                        className={`px-1.5 py-0.5 rounded text-[10px] font-mono ${
+                          isSelected && isBest
+                            ? "bg-slate-950/25 text-slate-950 font-black"
+                            : "bg-slate-950/50 text-amber-300"
+                        }`}
+                      >
+                        {tItem.ticket_beauty_score}đ
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
             </div>
           )}
 
@@ -300,16 +375,36 @@ export const HybridLearningDashboard: React.FC<HybridLearningProps> = ({
               const forecast = selectedTicket.row_forecasts?.[rIdx] || {};
               const sum = row.reduce((a, b) => a + b, 0);
               const evens = row.filter((n) => n % 2 === 0).length;
+              const isBestRow =
+                forecast.is_best_row ||
+                (selectedTicket.best_row_index !== undefined && selectedTicket.best_row_index === rIdx);
 
               return (
                 <div
                   key={rIdx}
-                  className="flex flex-col md:flex-row md:items-center justify-between gap-3 bg-slate-900/80 p-3 rounded-xl border border-slate-800/80 hover:border-slate-700 transition-all"
+                  className={`flex flex-col md:flex-row md:items-center justify-between gap-3 p-3 rounded-xl border transition-all ${
+                    isBestRow
+                      ? "bg-gradient-to-r from-amber-950/35 via-slate-900/90 to-slate-900/90 border-amber-400/60 ring-1 ring-amber-400/30 shadow-md shadow-amber-500/10"
+                      : "bg-slate-900/80 border-slate-800/80 hover:border-slate-700"
+                  }`}
                 >
                   <div className="flex flex-wrap items-center gap-3">
-                    <span className="w-7 h-7 rounded-lg bg-gradient-to-br from-violet-600 to-indigo-600 text-white text-xs font-bold flex items-center justify-center shadow-md shrink-0">
+                    <span
+                      className={`w-7 h-7 rounded-lg text-xs font-bold flex items-center justify-center shadow-md shrink-0 ${
+                        isBestRow
+                          ? "bg-gradient-to-br from-amber-400 to-yellow-500 text-slate-950 font-black"
+                          : "bg-gradient-to-br from-violet-600 to-indigo-600 text-white"
+                      }`}
+                    >
                       {String.fromCharCode(65 + rIdx)}
                     </span>
+
+                    {isBestRow && (
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-amber-400/20 text-amber-300 border border-amber-400/50 shrink-0">
+                        👑 Dãy Đẹp Nhất ({forecast.row_beauty_score || selectedTicket.best_row_score || 94.0}đ)
+                      </span>
+                    )}
+
                     {/* Sub-algorithm indicator */}
                     <span
                       className={`text-[10px] font-bold px-2 py-0.5 rounded-full border shrink-0 ${

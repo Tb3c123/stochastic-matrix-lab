@@ -37,12 +37,21 @@ async def get_auto_cycle_status(
 
     latest_ticket_data = None
     latest_tickets_batch = []
+    best_ai_ticket = None
     if recent_tickets:
+        from app.routers.tickets import compute_ticket_beauty_evaluation
         latest_period = recent_tickets[0].target_draw_period
         same_period_tickets = [t for t in reversed(recent_tickets) if t.target_draw_period == latest_period]
         for idx, t in enumerate(same_period_tickets):
-            pa = t.predicted_analysis or {}
+            pa = dict(t.predicted_analysis or {})
             variant = pa.get("ticket_variant", {})
+            row_fcs = [dict(fc) for fc in pa.get("row_forecasts", [])]
+            beauty_eval = compute_ticket_beauty_evaluation(
+                game_code=game_code,
+                rows=t.rows_data,
+                row_forecasts=row_fcs,
+                strategy="hybrid_ai_learned"
+            )
             item = {
                 "id": t.id,
                 "batch_index": pa.get("batch_ticket_index", idx + 1),
@@ -54,11 +63,31 @@ async def get_auto_cycle_status(
                 "target_draw_date": t.target_draw_date,
                 "rows": t.rows_data,
                 "status": t.status,
-                "row_forecasts": pa.get("row_forecasts", []),
+                "row_forecasts": row_fcs,
+                "ticket_beauty_score": beauty_eval["ticket_beauty_score"],
+                "beauty_grade": beauty_eval["beauty_grade"],
+                "beauty_verdict": beauty_eval["beauty_verdict"],
+                "best_row_index": beauty_eval["best_row_index"],
+                "best_row_label": beauty_eval["best_row_label"],
+                "best_row_score": beauty_eval["best_row_score"],
+                "beauty_highlights": beauty_eval["beauty_highlights"],
+                "beauty_evaluation": beauty_eval,
                 "created_at": t.created_at.isoformat()
             }
             latest_tickets_batch.append(item)
-        latest_ticket_data = latest_tickets_batch[0]
+
+        # Rank the AI tickets in this period by ticket_beauty_score desc
+        ranked_ai = sorted(
+            latest_tickets_batch,
+            key=lambda x: (x["ticket_beauty_score"], -x["batch_index"]),
+            reverse=True
+        )
+        for r_idx, r_item in enumerate(ranked_ai):
+            r_item["beauty_rank"] = r_idx + 1
+            r_item["is_best_ai_ticket"] = (r_idx == 0)
+
+        best_ai_ticket = ranked_ai[0] if ranked_ai else latest_tickets_batch[0]
+        latest_ticket_data = best_ai_ticket
 
     return ResponseEnvelope(
         success=True,
@@ -82,6 +111,7 @@ async def get_auto_cycle_status(
             "last_run_at": state.last_run_at.isoformat() if state.last_run_at else None,
             "learning_logs": state.learning_logs or [],
             "latest_ai_ticket": latest_ticket_data,
+            "best_ai_ticket": best_ai_ticket,
             "latest_ai_tickets": latest_tickets_batch
         }
     )

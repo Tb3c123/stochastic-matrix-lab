@@ -236,6 +236,13 @@ def analyze_ticket_probability(
         "algorithm_score": computed_score
     }
 
+    beauty_eval = compute_ticket_beauty_evaluation(
+        game_code=game_code,
+        rows=rows,
+        row_forecasts=row_forecasts,
+        strategy=effective_strategy
+    )
+
     return {
         "strategy_info": strategy_eval,
         "row_forecasts": row_forecasts,
@@ -247,7 +254,190 @@ def analyze_ticket_probability(
         "any_prize_probability_pct": combined_win_any_pct,
         "parity_ratio": parity_ratio,
         "total_combinations_universe": total_combinations,
-        "confidence_score": computed_score
+        "confidence_score": computed_score,
+        "beauty_evaluation": beauty_eval,
+        "ticket_beauty_score": beauty_eval["ticket_beauty_score"],
+        "best_row_index": beauty_eval["best_row_index"],
+        "best_row_label": beauty_eval["best_row_label"]
+    }
+
+
+def compute_ticket_beauty_evaluation(
+    game_code: str,
+    rows: List[List[int]],
+    row_forecasts: List[Dict[str, Any]],
+    strategy: str = "balanced"
+) -> Dict[str, Any]:
+    """
+    Evaluate a generated 5-row ticket across 5 quantitative pillars to determine
+    the 'Best Ticket of the Day' and the 'Best Row' within the ticket.
+    """
+    from collections import Counter
+    is_power = game_code == "power_6_55"
+    gauss_target = 162.5 if is_power else 140.0
+
+    if not rows:
+        return {
+            "ticket_beauty_score": 70.0,
+            "beauty_grade": "B",
+            "beauty_verdict": "Tiêu Chuẩn",
+            "best_row_index": 0,
+            "best_row_label": "Dãy A",
+            "best_row_score": 70.0,
+            "anchor_numbers": [],
+            "high_numbers_count": 0,
+            "distinct_specials_count": 0,
+            "recommended_rows_count": 0,
+            "pillars": {},
+            "beauty_highlights": []
+        }
+
+    # 1. Per-row scoring & Best Row identification
+    best_row_idx = 0
+    best_row_score = -1.0
+    best_tie_breaker = 9999.0
+    row_audit_scores: List[float] = []
+    row_forecast_scores: List[float] = []
+    recommended_rows_count = 0
+
+    for r_idx, r in enumerate(rows):
+        fc = row_forecasts[r_idx] if r_idx < len(row_forecasts) else {}
+        sp = fc.get("special_number")
+        audit = fc.get("audit")
+        if not audit:
+            audit = audit_single_row_recommendation(game_code, r, sp)
+            fc["audit"] = audit
+
+        a_score = float(audit.get("score", 82.0))
+        f_score = float(fc.get("forecast_score", 82.0))
+        if audit.get("verdict_code") == "recommended":
+            recommended_rows_count += 1
+
+        row_audit_scores.append(a_score)
+        row_forecast_scores.append(f_score)
+
+        high_cnt = sum(1 for n in r if n > 31)
+        anti_crowd_row_bonus = min(3.6, high_cnt * 1.2)
+        r_beauty = round(min(99.2, 0.62 * a_score + 0.34 * f_score + anti_crowd_row_bonus), 1)
+        fc["row_beauty_score"] = r_beauty
+        fc["is_best_row"] = False
+
+        gauss_dist = abs(sum(r) - gauss_target)
+        if r_beauty > best_row_score or (r_beauty == best_row_score and gauss_dist < best_tie_breaker):
+            best_row_score = r_beauty
+            best_row_idx = r_idx
+            best_tie_breaker = gauss_dist
+
+    if best_row_idx < len(row_forecasts):
+        row_forecasts[best_row_idx]["is_best_row"] = True
+
+    best_row_label = f"Dãy {chr(65 + best_row_idx)}"
+
+    # Pillar 1: 4-Pillar Structural Audit Average (40% weight)
+    avg_audit = sum(row_audit_scores) / len(row_audit_scores)
+    pillar_structure = min(99.5, round(avg_audit + (recommended_rows_count * 1.1), 1))
+
+    # Pillar 2: Whole-Ticket Coverage & Anchor Numbers (20% weight)
+    all_nums = [n for r in rows for n in r]
+    unique_cnt = len(set(all_nums))
+    freq_counter = Counter(all_nums)
+    anchor_numbers = sorted([num for num, cnt in freq_counter.items() if cnt == 2])
+
+    # Ideal for 5 rows (30 picks) is 21..25 unique numbers + 2..5 anchor numbers
+    if 21 <= unique_cnt <= 25:
+        cov_base = 94.0
+    elif 19 <= unique_cnt <= 27:
+        cov_base = 88.0
+    elif 17 <= unique_cnt <= 28:
+        cov_base = 80.0
+    else:
+        cov_base = 70.0
+    anchor_bonus = 5.5 if 2 <= len(anchor_numbers) <= 5 else (2.5 if len(anchor_numbers) > 0 else 0.0)
+    pillar_coverage = min(99.5, round(cov_base + anchor_bonus, 1))
+
+    # Pillar 3: AI Posterior & Cycle Convergence (15% weight)
+    avg_fc = sum(row_forecast_scores) / len(row_forecast_scores)
+    strat_bonus = 5.5 if strategy == "hybrid_ai_learned" else (3.5 if strategy in ("balanced", "mixed") else 1.0)
+    pillar_ai_convergence = min(99.5, round(avg_fc + strat_bonus, 1))
+
+    # Pillar 4: Anti-Crowd Jackpot Uniqueness (numbers > 31) (15% weight)
+    high_numbers_count = sum(1 for n in all_nums if n > 31)
+    if high_numbers_count >= 9:
+        pillar_anti_crowd = 98.0
+    elif high_numbers_count >= 7:
+        pillar_anti_crowd = 93.0
+    elif high_numbers_count >= 5:
+        pillar_anti_crowd = 86.0
+    else:
+        pillar_anti_crowd = max(65.0, 68.0 + high_numbers_count * 3.5)
+
+    # Pillar 5: Special Number Diversity (Power 6/55) or Decade Spread (Mega 6/45) (10% weight)
+    specials = [
+        fc.get("special_number")
+        for fc in row_forecasts
+        if fc.get("special_number") is not None
+    ]
+    distinct_specials_count = len(set(specials))
+    all_decades = len(set(n // 10 for n in all_nums))
+
+    if is_power:
+        pillar_diversity = min(99.5, round(60.0 + distinct_specials_count * 7.9, 1))
+    else:
+        pillar_diversity = min(99.5, round(65.0 + all_decades * 6.9, 1))
+
+    # Final Composite Ticket Beauty Score
+    ticket_beauty_score = round(
+        min(
+            99.5,
+            0.40 * pillar_structure
+            + 0.20 * pillar_coverage
+            + 0.15 * pillar_ai_convergence
+            + 0.15 * pillar_anti_crowd
+            + 0.10 * pillar_diversity
+        ),
+        1
+    )
+
+    if ticket_beauty_score >= 92.0:
+        beauty_grade = "S+"
+        beauty_verdict = "Siêu Phẩm Tối Ưu Nhất"
+    elif ticket_beauty_score >= 88.5:
+        beauty_grade = "S"
+        beauty_verdict = "Vé Đẹp Xuất Sắc"
+    elif ticket_beauty_score >= 84.0:
+        beauty_grade = "A+"
+        beauty_verdict = "Khuyên Dùng Cao"
+    else:
+        beauty_grade = "A"
+        beauty_verdict = "Cấu Trúc Ổn Định"
+
+    highlights = [
+        f"{recommended_rows_count}/{len(rows)} dãy đạt chuẩn tối ưu Gauss & Chẵn/Lẻ ({best_row_label} cao nhất: {best_row_score}đ)",
+        f"Bao phủ {unique_cnt} số độc lập"
+        + (f" • Số trụ hội tụ: {', '.join(f'{n:02d}' for n in anchor_numbers[:4])}" if anchor_numbers else ""),
+        f"Chống chia giải Độc Đắc: {high_numbers_count} vị trí số > 31"
+        + (f" • {distinct_specials_count} bóng ĐB độc lập" if is_power and distinct_specials_count > 0 else "")
+    ]
+
+    return {
+        "ticket_beauty_score": ticket_beauty_score,
+        "beauty_grade": beauty_grade,
+        "beauty_verdict": beauty_verdict,
+        "best_row_index": best_row_idx,
+        "best_row_label": best_row_label,
+        "best_row_score": best_row_score,
+        "anchor_numbers": anchor_numbers,
+        "high_numbers_count": high_numbers_count,
+        "distinct_specials_count": distinct_specials_count,
+        "recommended_rows_count": recommended_rows_count,
+        "pillars": {
+            "structure_gauss_parity": pillar_structure,
+            "coverage_and_anchors": pillar_coverage,
+            "ai_cycle_convergence": pillar_ai_convergence,
+            "anti_crowd_uniqueness": pillar_anti_crowd,
+            "special_or_decade_diversity": pillar_diversity
+        },
+        "beauty_highlights": highlights
     }
 
 
@@ -371,7 +561,18 @@ async def list_tickets(
             if "audit" not in fc:
                 fc["audit"] = audit_single_row_recommendation(t.game_code, row, sp)
             updated_fcs.append(fc)
+
+        beauty_eval = compute_ticket_beauty_evaluation(
+            game_code=t.game_code,
+            rows=t.rows_data,
+            row_forecasts=updated_fcs,
+            strategy=t.strategy
+        )
         pred_analysis["row_forecasts"] = updated_fcs
+        pred_analysis["beauty_evaluation"] = beauty_eval
+        pred_analysis["ticket_beauty_score"] = beauty_eval["ticket_beauty_score"]
+        pred_analysis["best_row_index"] = beauty_eval["best_row_index"]
+        pred_analysis["best_row_label"] = beauty_eval["best_row_label"]
 
         data.append({
             "id": t.id,
@@ -381,11 +582,42 @@ async def list_tickets(
             "target_draw_date": t.target_draw_date,
             "rows": t.rows_data,
             "rows_count": len(t.rows_data),
+            "ticket_beauty_score": beauty_eval["ticket_beauty_score"],
+            "beauty_grade": beauty_eval["beauty_grade"],
+            "beauty_verdict": beauty_eval["beauty_verdict"],
+            "best_row_index": beauty_eval["best_row_index"],
+            "best_row_label": beauty_eval["best_row_label"],
+            "best_row_score": beauty_eval["best_row_score"],
             "predicted_analysis": pred_analysis,
             "status": t.status,
             "matched_results": t.matched_results,
             "created_at": t.created_at.isoformat()
         })
+
+    # Group by (game_code, target_draw_period) to rank tickets and mark Top #1 Best Ticket of the Period
+    from collections import defaultdict
+    period_groups: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
+    for item in data:
+        p_key = f"{item['game_code']}::{item['target_draw_period']}"
+        period_groups[p_key].append(item)
+
+    for p_key, group_items in period_groups.items():
+        # Sort by ticket_beauty_score desc, then prefer hybrid_ai_learned on tie
+        sorted_group = sorted(
+            group_items,
+            key=lambda x: (
+                x.get("ticket_beauty_score", 0.0),
+                1 if x.get("strategy") == "hybrid_ai_learned" else 0,
+                -x.get("id", 0)
+            ),
+            reverse=True
+        )
+        total_in_period = len(sorted_group)
+        for rank_idx, g_item in enumerate(sorted_group):
+            g_item["beauty_rank"] = rank_idx + 1
+            g_item["period_tickets_count"] = total_in_period
+            g_item["is_best_ticket_of_period"] = (rank_idx == 0)
+
     return ResponseEnvelope(success=True, data=data)
 
 @router.get("/algorithms-performance", response_model=ResponseEnvelope)

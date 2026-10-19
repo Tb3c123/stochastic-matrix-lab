@@ -301,6 +301,15 @@ export const SavedTicketsTracker: React.FC<SavedTicketsTrackerProps> = ({ gameCo
       }
     });
 
+    Object.values(groupsMap).forEach((grp) => {
+      grp.tickets.sort((tA, tB) => {
+        const sA = tA.ticket_beauty_score ?? tA.predicted_analysis?.ticket_beauty_score ?? 0;
+        const sB = tB.ticket_beauty_score ?? tB.predicted_analysis?.ticket_beauty_score ?? 0;
+        if (sB !== sA) return sB - sA;
+        return (tB.id || 0) - (tA.id || 0);
+      });
+    });
+
     return Object.entries(groupsMap).sort(([keyA, a], [keyB, b]) => {
       if (a.date && b.date) {
         return b.date.localeCompare(a.date);
@@ -317,12 +326,22 @@ export const SavedTicketsTracker: React.FC<SavedTicketsTrackerProps> = ({ gameCo
     const stratInfo = analysis.strategy_info || {};
     const matchResult = ticket.matched_results;
     const stratBadge = getStrategyBadge(ticket.strategy);
+    const beautyEval = analysis.beauty_evaluation || {};
+    const ticketBeautyScore =
+      ticket.ticket_beauty_score ?? analysis.ticket_beauty_score ?? beautyEval.ticket_beauty_score ?? 88.5;
+    const beautyGrade =
+      ticket.beauty_grade ?? beautyEval.beauty_grade ?? (ticketBeautyScore >= 92 ? "S+" : ticketBeautyScore >= 88.5 ? "S" : "A+");
+    const isBestOfPeriod = !!ticket.is_best_ticket_of_period;
+    const bestRowIdx = ticket.best_row_index ?? analysis.best_row_index ?? beautyEval.best_row_index ?? 0;
+    const bestRowLabel = ticket.best_row_label ?? analysis.best_row_label ?? beautyEval.best_row_label ?? "Dãy A";
 
     return (
       <div
         key={ticket.id}
-        className={`border rounded-2xl p-5 transition-all ${
-          isPending
+        className={`border rounded-2xl p-5 transition-all relative overflow-hidden ${
+          isBestOfPeriod
+            ? "bg-gradient-to-br from-amber-950/25 via-slate-900 to-slate-900 border-amber-400/60 ring-1 ring-amber-400/30 shadow-lg shadow-amber-500/10"
+            : isPending
             ? "bg-slate-800/30 border-slate-800 hover:border-slate-700"
             : matchResult?.total_prize_vnd > 0
             ? "bg-emerald-950/20 border-emerald-800/40"
@@ -331,7 +350,14 @@ export const SavedTicketsTracker: React.FC<SavedTicketsTrackerProps> = ({ gameCo
       >
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
           {/* Header Info & Strategy Tag */}
-          <div className="flex flex-wrap items-center gap-3">
+          <div className="flex flex-wrap items-center gap-2.5">
+            {/* Best Ticket of the Day / Period Crown Badge */}
+            {isBestOfPeriod && (
+              <span className="px-3 py-1 rounded-full text-xs font-black bg-gradient-to-r from-amber-400 to-yellow-300 text-slate-950 shadow-md shadow-amber-500/20 flex items-center gap-1">
+                👑 VÉ ĐẸP NHẤT KỲ #{ticket.target_draw_period} (TOP #1)
+              </span>
+            )}
+
             {/* Status Badge */}
             <span
               className={`px-3 py-1 rounded-full text-xs font-bold flex items-center gap-1.5 ${
@@ -350,22 +376,34 @@ export const SavedTicketsTracker: React.FC<SavedTicketsTrackerProps> = ({ gameCo
             </span>
 
             <div className="text-xs text-slate-400 flex items-center gap-2">
-              <span>Vé {ticket.rows_count} dãy</span>
+              <span>Vé #{ticket.id} ({ticket.rows_count} dãy)</span>
               <span>•</span>
               <span>Ngày quay: <b className="text-slate-300">{formatDate(ticket.target_draw_date)}</b></span>
             </div>
           </div>
 
-          {/* Accuracy & Probability Badges */}
-          <div className="flex flex-wrap items-center gap-2.5 text-xs">
-            <div className="bg-slate-800/90 px-3 py-1.5 rounded-xl border border-slate-700/80 text-slate-300 flex items-center gap-1.5">
-              <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
-              <span>Độ chính xác thuật toán:</span>
-              <b className="text-amber-400">{stratInfo.historical_accuracy_pct || 80.0}% ({stratInfo.confidence_rating || "A"})</b>
+          {/* Beauty Score, Accuracy & Probability Badges */}
+          <div className="flex flex-wrap items-center gap-2 text-xs">
+            <div
+              className={`px-3 py-1.5 rounded-xl border flex items-center gap-1.5 font-bold ${
+                isBestOfPeriod
+                  ? "bg-amber-500/20 border-amber-400/50 text-amber-300"
+                  : "bg-slate-800/90 border-slate-700/80 text-slate-300"
+              }`}
+              title="Điểm đánh giá độ đẹp tổng hợp 5 trụ cột của vé trong ngày"
+            >
+              <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+              <span>
+                {ticket.beauty_rank ? `Hạng #${ticket.beauty_rank}/${ticket.period_tickets_count} • ` : ""}
+                Điểm Đẹp: <b className="text-amber-300 font-mono">{ticketBeautyScore}/100 ({beautyGrade})</b>
+              </span>
+              <span className="text-[11px] text-emerald-300 ml-1">• ★ {bestRowLabel}</span>
             </div>
 
-            <div className="bg-slate-800/90 px-3 py-1.5 rounded-xl border border-slate-700/80 text-slate-300">
-              Xác suất trúng ít nhất 1 giải: <b className="text-white">{analysis.any_prize_probability_pct}%</b>
+            <div className="bg-slate-800/90 px-3 py-1.5 rounded-xl border border-slate-700/80 text-slate-300 flex items-center gap-1.5">
+              <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
+              <span>Độ chính xác:</span>
+              <b className="text-amber-400">{stratInfo.historical_accuracy_pct || 80.0}% ({stratInfo.confidence_rating || "A"})</b>
             </div>
 
             {matchResult && matchResult.total_prize_vnd > 0 && (
@@ -393,18 +431,35 @@ export const SavedTicketsTracker: React.FC<SavedTicketsTrackerProps> = ({ gameCo
             const audit = rowForecast?.audit;
             const rowKey = `${ticket.id}-${rIdx}`;
             const isAuditOpen = !!openRowAudits[rowKey];
+            const isBestRow = rowForecast?.is_best_row || rIdx === bestRowIdx;
 
             return (
               <div
                 key={rIdx}
-                className="bg-slate-850/50 rounded-xl border border-slate-800/60 transition-all overflow-hidden"
+                className={`rounded-xl border transition-all overflow-hidden ${
+                  isBestRow
+                    ? "bg-gradient-to-r from-amber-950/25 via-slate-850/60 to-slate-850/60 border-amber-400/50"
+                    : "bg-slate-850/50 border-slate-800/60"
+                }`}
               >
                 {/* Main Row Bar */}
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3">
                   <div className="flex flex-wrap items-center gap-3">
-                    <span className="w-7 h-7 rounded-lg bg-slate-800 text-slate-400 text-xs font-bold flex items-center justify-center shrink-0">
+                    <span
+                      className={`w-7 h-7 rounded-lg text-xs font-bold flex items-center justify-center shrink-0 ${
+                        isBestRow
+                          ? "bg-gradient-to-br from-amber-400 to-yellow-500 text-slate-950 font-black"
+                          : "bg-slate-800 text-slate-400"
+                      }`}
+                    >
                       {String.fromCharCode(65 + rIdx)}
                     </span>
+
+                    {isBestRow && (
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-amber-400/20 text-amber-300 border border-amber-400/40 shrink-0">
+                        👑 Dãy Đẹp Nhất ({rowForecast?.row_beauty_score || ticket.best_row_score || 94.0}đ)
+                      </span>
+                    )}
 
                     {/* Specific Algorithm used for this row */}
                     {(() => {
