@@ -101,3 +101,28 @@ def test_stepwise_escalation_and_deescalation_ladder():
     assert r6["next_level"] == 1
     assert r6["target_ticket_count"] == 2
 
+    # 8. False Jackpot Signal Penalty: At Level 1 (mult 1.30x), 0 matches AND 1 golden row had 0 matches
+    # Base penalty = -120 * 1.30 = -156.0; False signal penalty = -150 * 1.30 = -195.0 -> Total = -351.0
+    r7 = compute_stepwise_reward_and_next_level(
+        highest_match=0,
+        hit_jackpot_2=False,
+        current_level=1,
+        winless_golden_row_matches=[0]
+    )
+    assert r7["false_signal_penalty"] == -195.0
+    assert r7["cycle_reward"] == -351.0
+    assert r7["failed_golden_rows_count"] == 1
+    assert r7["next_level"] == 2
+
+    # 9. False Jackpot Signal blocks cooldown on minor win: At Level 2, another row hit 3 numbers (-10 pts)
+    # but a flagged 8/8 Jackpot Signal row only hit 2 numbers (no prize -> -60 * 1.65 = -99.0 pts)
+    r8 = compute_stepwise_reward_and_next_level(
+        highest_match=3,
+        hit_jackpot_2=False,
+        current_level=2,
+        winless_golden_row_matches=[2]
+    )
+    assert r8["false_signal_penalty"] == -99.0
+    assert r8["cycle_reward"] == -109.0
+    assert r8["next_level"] == 2  # Blocked from stepping down to Level 1!
+

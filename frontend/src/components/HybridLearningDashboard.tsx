@@ -207,6 +207,9 @@ export const HybridLearningDashboard: React.FC<HybridLearningProps> = ({
           <span className="px-2.5 py-1 rounded-lg bg-rose-500/10 border border-rose-500/25 text-rose-300 font-semibold">
             Trượt (2 / 1 / 0 số): Cơ sở -35 / -75 / -120 pts × Hệ số Bậc ({escalationInfo.penalty_multiplier?.toFixed(2) || "1.00"}x)
           </span>
+          <span className="px-2.5 py-1 rounded-lg bg-amber-500/15 border border-amber-400/40 text-amber-300 font-bold">
+            ⚠️ Phạt Báo Hiệu Độc Đắc Sai (Dãy 8/8 cổng trượt giải 2/1/0 số): Phạt thêm -60 / -100 / -150 pts × Hệ số Bậc + Khóa lùi bậc
+          </span>
         </div>
       </div>
 

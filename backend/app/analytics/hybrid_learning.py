@@ -84,7 +84,8 @@ def get_current_escalation_level(state: AILearningState) -> int:
 def compute_stepwise_reward_and_next_level(
     highest_match: int,
     hit_jackpot_2: bool,
-    current_level: int
+    current_level: int,
+    winless_golden_row_matches: Optional[List[int]] = None
 ) -> Dict[str, Any]:
     """
     Compute Jackpot-Only reward/penalty and next escalation level using Stepwise Hysteresis:
@@ -95,10 +96,18 @@ def compute_stepwise_reward_and_next_level(
       * 0 matches: base -120.0 pts
     - Minor/Secondary prizes (3, 4, 5 matches): Step DOWN -1 level (gradual cooldown), light penalty (-10, -5, -2).
     - Jackpot 1 / Jackpot 2: Step DOWN -2 levels, massive positive reward (+10,000 / +5,000).
+    - NEW: False Jackpot Signal Penalty (Phạt Báo Hiệu Độc Đắc Thất Bại):
+      If any row in the period was flagged with `is_golden_row = True` (8/8 Jackpot DNA Gates)
+      but failed to win any prize (< 3 matches), apply an additional severe penalty per failed signal row:
+      * 0 matches on 8/8 signal row: -150.0 * mult pts (+0.45 lr_multiplier)
+      * 1 match on 8/8 signal row:   -100.0 * mult pts (+0.30 lr_multiplier)
+      * 2 matches on 8/8 signal row:  -60.0 * mult pts (+0.20 lr_multiplier)
+      And prevent de-escalation on minor wins if the flagged Jackpot Signal row itself was winless.
     """
     curr_lvl = max(0, min(3, int(current_level)))
     ladder_info = ESCALATION_LADDER[curr_lvl]
     mult = ladder_info["penalty_multiplier"]
+    failed_signals = [m for m in (winless_golden_row_matches or []) if m < 3]
 
     if highest_match >= 6:
         cycle_reward = 10000.0
@@ -149,6 +158,35 @@ def compute_stepwise_reward_and_next_level(
         step_direction = f"Tiến 1 bậc (Bậc {curr_lvl} → Bậc {next_level})" if next_level > curr_lvl else f"Giữ trần Bậc {curr_lvl}"
         policy_action = f"Trắng bảng (0 số) • Phạt kịch khung {cycle_reward}đ ({mult:.2f}x) & {step_direction}"
 
+    # Apply extra False-Jackpot-Signal Penalty if any 8/8 DNA Signal row failed to win a prize (< 3 matches)
+    false_signal_penalty = 0.0
+    false_signal_lr_boost = 0.0
+    if failed_signals:
+        for m_val in failed_signals:
+            if m_val <= 0:
+                false_signal_penalty += round(-150.0 * mult, 1)
+                false_signal_lr_boost += 0.45
+            elif m_val == 1:
+                false_signal_penalty += round(-100.0 * mult, 1)
+                false_signal_lr_boost += 0.30
+            else:  # m_val == 2
+                false_signal_penalty += round(-60.0 * mult, 1)
+                false_signal_lr_boost += 0.20
+
+        false_signal_penalty = round(false_signal_penalty, 1)
+        cycle_reward = round(cycle_reward + false_signal_penalty, 1)
+        lr_multiplier = round(min(3.0, lr_multiplier + false_signal_lr_boost), 2)
+
+        # If a minor prize occurred on a non-signal row, block cooldown because the Golden Signal row itself missed
+        if highest_match in (3, 4, 5) and next_level < curr_lvl:
+            next_level = curr_lvl
+            step_direction = f"Giữ nguyên Bậc {curr_lvl} (Khóa lùi bậc do Dãy Tín Hiệu Độc Đắc trượt giải)"
+
+        policy_action += (
+            f" + ⚠️ PHẠT BÁO HIỆU ĐỘC ĐẮC SAI ({len(failed_signals)} dãy 8/8 cổng không trúng giải: "
+            f"phạt thêm {false_signal_penalty}đ, tăng tốc học +{int(false_signal_lr_boost*100)}%)"
+        )
+
     next_info = ESCALATION_LADDER[next_level]
     return {
         "previous_level": curr_lvl,
@@ -159,6 +197,8 @@ def compute_stepwise_reward_and_next_level(
         "level_label": next_info["label"],
         "step_direction": step_direction,
         "cycle_reward": cycle_reward,
+        "false_signal_penalty": false_signal_penalty,
+        "failed_golden_rows_count": len(failed_signals),
         "lr_multiplier": lr_multiplier,
         "policy_action": policy_action
     }
@@ -199,6 +239,8 @@ async def recalibrate_hybrid_learning(
     evaluated_tickets: List[SavedTicket]
 ) -> Dict[str, Any]:
     """Perform closed-loop Bayesian weight adjustment and Stepwise Bandit reward/escalation update."""
+    from app.routers.tickets import compute_ticket_beauty_evaluation
+
     state = await get_or_create_learning_state(db, game_code)
     winning_nums = set(actual_draw.winning_numbers)
     sum_val = sum(actual_draw.winning_numbers)
@@ -235,12 +277,26 @@ async def recalibrate_hybrid_learning(
     gauss_optimal = (140 <= sum_val <= 185) if is_power else (120 <= sum_val <= 160)
     parity_optimal = even_count in (2, 3, 4)
 
-    # 2. Determine highest match across all evaluated tickets of this draw period
+    # 2. Determine highest match AND check if any predicted 8/8 Jackpot Signal rows failed to win a prize
     highest_match = 0
     hit_jackpot_2 = False
+    winless_golden_row_matches: List[int] = []
+    failed_golden_nums: List[int] = []
 
     if evaluated_tickets:
         for t in evaluated_tickets:
+            pa = dict(t.predicted_analysis or {})
+            row_fcs = [dict(fc) for fc in pa.get("row_forecasts", [])]
+            beauty_eval = compute_ticket_beauty_evaluation(
+                game_code=game_code,
+                rows=t.rows_data or [],
+                row_forecasts=row_fcs,
+                strategy=t.strategy or "hybrid_ai_learned"
+            )
+            golden_row_indices = {
+                gr["row_index"] for gr in beauty_eval.get("golden_rows", []) if "row_index" in gr
+            }
+
             if t.matched_results:
                 best_match = t.matched_results.get("best_match_count", 0)
                 if best_match > highest_match:
@@ -250,12 +306,30 @@ async def recalibrate_hybrid_learning(
                 has_jp2 = any(r.get("match_count") == 5 and r.get("matched_special") for r in rows_eval)
                 if has_jp2:
                     hit_jackpot_2 = True
+
+                for r_idx in golden_row_indices:
+                    if r_idx < len(rows_eval):
+                        r_eval = rows_eval[r_idx]
+                        m_cnt = int(r_eval.get("match_count", 0))
+                        prize_amt = float(r_eval.get("prize_amount", 0.0))
+                        if m_cnt < 3 and prize_amt <= 0:
+                            winless_golden_row_matches.append(m_cnt)
+                            if t.rows_data and r_idx < len(t.rows_data):
+                                failed_golden_nums.extend(t.rows_data[r_idx])
+                    elif t.rows_data and r_idx < len(t.rows_data):
+                        m_cnt = len(set(t.rows_data[r_idx]).intersection(winning_nums))
+                        if m_cnt < 3:
+                            winless_golden_row_matches.append(m_cnt)
+                            failed_golden_nums.extend(t.rows_data[r_idx])
             elif t.rows_data:
                 # Fallback direct row comparison if matched_results not yet populated
-                for r in t.rows_data:
+                for r_idx, r in enumerate(t.rows_data):
                     m_cnt = len(set(r).intersection(winning_nums))
                     if m_cnt > highest_match:
                         highest_match = m_cnt
+                    if r_idx in golden_row_indices and m_cnt < 3:
+                        winless_golden_row_matches.append(m_cnt)
+                        failed_golden_nums.extend(r)
     else:
         highest_match = max(hot_matches, late_matches)
 
@@ -263,20 +337,31 @@ async def recalibrate_hybrid_learning(
     step_outcome = compute_stepwise_reward_and_next_level(
         highest_match=highest_match,
         hit_jackpot_2=hit_jackpot_2,
-        current_level=current_level
+        current_level=current_level,
+        winless_golden_row_matches=winless_golden_row_matches
     )
 
     cycle_reward = step_outcome["cycle_reward"]
+    false_signal_penalty = step_outcome["false_signal_penalty"]
+    failed_golden_rows_count = step_outcome["failed_golden_rows_count"]
     lr_multiplier = step_outcome["lr_multiplier"]
     policy_action = step_outcome["policy_action"]
     next_level = step_outcome["next_level"]
     target_ticket_count = step_outcome["target_ticket_count"]
 
-    # 3. Gradient delta adjustments (Bayesian dynamic update scaled by lr_multiplier)
+    # 3. Gradient delta adjustments (Bayesian dynamic update scaled by lr_multiplier + direct False-Signal attribution)
     delta_hot = (hot_matches - 2.0) * 0.03 * lr_multiplier
     delta_late = (late_matches - 2.0) * 0.04 * lr_multiplier
     delta_gauss = (0.03 if gauss_optimal else -0.02) * lr_multiplier
     delta_parity = (0.02 if parity_optimal else -0.02) * lr_multiplier
+
+    if failed_golden_nums:
+        missed_Signal_nums = set(failed_golden_nums) - winning_nums
+        false_hot_cnt = len(missed_Signal_nums.intersection(hot_top10))
+        false_late_cnt = len(missed_Signal_nums.intersection(late_top10))
+        # Direct attribution penalty on whichever bucket misled the 8/8 Jackpot Signal row
+        delta_hot -= false_hot_cnt * 0.015
+        delta_late -= false_late_cnt * 0.015
 
     new_w_hot = max(0.10, min(0.55, state.w_hot + delta_hot))
     new_w_late = max(0.15, min(0.60, state.w_lateness + delta_late))
@@ -305,6 +390,8 @@ async def recalibrate_hybrid_learning(
         "winning_numbers": actual_draw.winning_numbers,
         "policy_action": policy_action,
         "cycle_reward": cycle_reward,
+        "false_signal_penalty": false_signal_penalty,
+        "failed_golden_rows_count": failed_golden_rows_count,
         "previous_level": current_level,
         "escalation_level": next_level,
         "target_ticket_count": target_ticket_count,
@@ -335,6 +422,8 @@ async def recalibrate_hybrid_learning(
         "cycle_learned": state.total_cycles_learned,
         "policy_action": policy_action,
         "cycle_reward": cycle_reward,
+        "false_signal_penalty": false_signal_penalty,
+        "failed_golden_rows_count": failed_golden_rows_count,
         "previous_level": current_level,
         "escalation_level": next_level,
         "target_ticket_count": target_ticket_count,
