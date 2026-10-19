@@ -28,6 +28,7 @@ export const HybridLearningDashboard: React.FC<HybridLearningProps> = ({
 }) => {
   const [statusData, setStatusData] = useState<any>(null);
   const [loading, setLoading] = useState<boolean>(true);
+  const [activeTicketIdx, setActiveTicketIdx] = useState<number>(0);
 
   const fetchStatus = async () => {
     setLoading(true);
@@ -36,6 +37,7 @@ export const HybridLearningDashboard: React.FC<HybridLearningProps> = ({
       const json = await res.json();
       if (json.success && json.data) {
         setStatusData(json.data);
+        setActiveTicketIdx(0);
       }
     } catch (e) {
       console.error("Fetch auto cycle status failed:", e);
@@ -51,9 +53,28 @@ export const HybridLearningDashboard: React.FC<HybridLearningProps> = ({
   if (loading || !statusData) return null;
 
   const weights = statusData.weights || { w_lateness: 0.35, w_gauss_sum: 0.25, w_hot: 0.25, w_parity: 0.15 };
-  const latestAiTicket = statusData.latest_ai_ticket;
+  const latestAiTickets: any[] =
+    statusData.latest_ai_tickets && statusData.latest_ai_tickets.length > 0
+      ? statusData.latest_ai_tickets
+      : statusData.latest_ai_ticket
+      ? [statusData.latest_ai_ticket]
+      : [];
+  const selectedTicket = latestAiTickets[activeTicketIdx] || latestAiTickets[0] || null;
   const learningLogs = statusData.learning_logs || [];
   const banditReward = Math.round(statusData.bandit_cumulative_reward || 0);
+  const escalationLevel: number = statusData.escalation_level ?? 0;
+  const escalationInfo = statusData.escalation_info || {
+    level: escalationLevel,
+    penalty_multiplier: 1.0,
+    ticket_count: 1,
+    label: "Bậc 0: Tinh Hoa Hội Tụ (1 Vé • Phạt 1.00x)"
+  };
+  const escalationLadder: any[] = statusData.escalation_ladder || [
+    { level: 0, penalty_multiplier: 1.0, ticket_count: 1, label: "Bậc 0: Tinh Hoa Hội Tụ (1 Vé • Phạt 1.00x)" },
+    { level: 1, penalty_multiplier: 1.3, ticket_count: 2, label: "Bậc 1: Mở Rộng Quét Trễ (2 Vé • Phạt 1.30x)" },
+    { level: 2, penalty_multiplier: 1.65, ticket_count: 3, label: "Bậc 2: Đột Biến Đa Cực (3 Vé • Phạt 1.65x)" },
+    { level: 3, penalty_multiplier: 2.0, ticket_count: 4, label: "Bậc 3: Bao Vây Tối Đa (4 Vé • Phạt 2.00x)" }
+  ];
 
   const formatDrawDateWithDay = (dateStr?: string) => {
     if (!dateStr) return "";
@@ -77,13 +98,13 @@ export const HybridLearningDashboard: React.FC<HybridLearningProps> = ({
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pb-6 border-b border-slate-800">
         <div>
           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider bg-amber-500/10 text-amber-400 border border-amber-500/20 mb-2">
-            <Cpu className="w-3.5 h-3.5" /> Hệ Thống Tự Hành 100% • Chế Độ Săn Độc Đắc (Jackpot-Only RL)
+            <Cpu className="w-3.5 h-3.5" /> Hệ Thống Tự Hành 100% • Nấc Thang Bậc 0 ↔ Bậc 3 (Không Reset Cứng)
           </div>
           <h3 className="text-2xl font-bold text-white flex items-center gap-2">
-            Cỗ Máy AI Tự Học & Săn Độc Đắc Tự Động
+            Cỗ Máy AI Tự Học & Săn Độc Đắc Theo Nấc Thang
           </h3>
           <p className="text-xs md:text-sm text-slate-400 mt-1">
-            Vận hành tự động hoàn toàn: <b>19:10</b> ngày quay tự cào kết quả & đối soát; <b>10:00 sáng</b> tự học hỏi theo cơ chế <i>Thưởng Độc Đắc - Phạt Bậc Thang</i> và sinh 1 vé 5 dãy mới.
+            Vận hành tự động hoàn toàn: <b>19:10</b> ngày quay tự cào kết quả & đối soát; <b>10:00 sáng</b> tự học theo cơ chế <i>Tiến/Lùi Từng Bậc</i> (Trượt tiến +1 bậc tăng phạt & thêm vé; Có giải phụ chỉ lùi -1 bậc để giữ đà bao vây).
           </p>
         </div>
 
@@ -104,11 +125,66 @@ export const HybridLearningDashboard: React.FC<HybridLearningProps> = ({
         </div>
       </div>
 
+      {/* 4-Step Escalation & De-escalation Ladder Bar */}
+      <div className="bg-slate-850/90 border border-violet-500/30 rounded-2xl p-4 md:p-5 space-y-3.5">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-2">
+          <div className="flex items-center gap-2 text-xs md:text-sm font-bold text-violet-300">
+            <Zap className="w-4 h-4 text-amber-400" />
+            <span>Thang Điều Khiển Áp Lực & Mở Rộng Vé (Tiến/Lùi Từng Bậc - Hysteresis Ladder):</span>
+          </div>
+          <div className="flex flex-wrap items-center gap-2 text-[11px]">
+            <span className="px-2.5 py-1 rounded-lg bg-rose-500/15 border border-rose-500/30 text-rose-300 font-semibold">
+              Trượt (0-2 số): Tiến +1 Bậc
+            </span>
+            <span className="px-2.5 py-1 rounded-lg bg-sky-500/15 border border-sky-500/30 text-sky-300 font-semibold">
+              Giải phụ (3-5 số): Lùi -1 Bậc (Không reset về 0)
+            </span>
+            <span className="px-2.5 py-1 rounded-lg bg-amber-500/15 border border-amber-500/30 text-amber-300 font-semibold">
+              Nổ Độc Đắc: Lùi -2 Bậc
+            </span>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+          {escalationLadder.map((step: any) => {
+            const isCurrent = step.level === escalationLevel;
+            return (
+              <div
+                key={step.level}
+                className={`p-3 rounded-xl border transition-all ${
+                  isCurrent
+                    ? "bg-gradient-to-br from-violet-600/25 to-amber-500/15 border-amber-400 shadow-lg shadow-amber-500/10"
+                    : "bg-slate-900/60 border-slate-800 opacity-65"
+                }`}
+              >
+                <div className="flex items-center justify-between mb-1">
+                  <span className={`text-xs font-extrabold ${isCurrent ? "text-amber-300" : "text-slate-400"}`}>
+                    BẬC {step.level} {isCurrent && "• ĐANG KÍCH HOẠT"}
+                  </span>
+                  <span className="text-[11px] font-mono font-bold px-2 py-0.5 rounded bg-slate-800 text-violet-300">
+                    Phạt {step.penalty_multiplier.toFixed(2)}x
+                  </span>
+                </div>
+                <div className="text-xs font-bold text-white">
+                  Quy mô: <span className="text-emerald-400">{step.ticket_count} Vé ({step.ticket_count * 5} dãy)</span>
+                </div>
+                <div className="text-[11px] text-slate-400 mt-1">
+                  Phạt trượt (2/1/0 số):{" "}
+                  <b className="text-rose-300 font-mono">
+                    {Math.round(-35 * step.penalty_multiplier)} / {Math.round(-75 * step.penalty_multiplier)} / {Math.round(-120 * step.penalty_multiplier)}đ
+                  </b>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
       {/* Jackpot-Only Reward Shaping Rules Bar */}
       <div className="bg-slate-850/90 border border-amber-500/25 rounded-2xl p-4 flex flex-col lg:flex-row lg:items-center justify-between gap-3 text-xs">
         <div className="flex items-center gap-2 text-amber-300 font-bold shrink-0">
           <Trophy className="w-4 h-4 text-amber-400" />
-          <span>Hàm Mục Tiêu Săn Độc Đắc (Jackpot-Only Reward Shaping):</span>
+          <span>Hàm Mục Tiêu Săn Độc Đắc:</span>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <span className="px-2.5 py-1 rounded-lg bg-amber-500/20 border border-amber-400/40 text-amber-300 font-bold">
@@ -120,10 +196,10 @@ export const HybridLearningDashboard: React.FC<HybridLearningProps> = ({
             </span>
           )}
           <span className="px-2.5 py-1 rounded-lg bg-sky-500/10 border border-sky-500/25 text-sky-300 font-semibold">
-            Giải Nhất/Nhì/Ba (5-3 số): Phạt nhẹ (-2 / -5 / -10 pts) → Tinh chỉnh hẹp
+            Giải Nhất/Nhì/Ba (5-3 số): -2 / -5 / -10 pts (Lùi 1 bậc)
           </span>
           <span className="px-2.5 py-1 rounded-lg bg-rose-500/10 border border-rose-500/25 text-rose-300 font-semibold">
-            Trượt (0-2 số): Phạt nặng (-25 / -50 pts) → Xoay trục mạnh
+            Trượt (2 / 1 / 0 số): Cơ sở -35 / -75 / -120 pts × Hệ số Bậc ({escalationInfo.penalty_multiplier?.toFixed(2) || "1.00"}x)
           </span>
         </div>
       </div>
@@ -176,33 +252,52 @@ export const HybridLearningDashboard: React.FC<HybridLearningProps> = ({
           </div>
           <div className="flex justify-between items-center text-[11px] text-slate-400 pt-1">
             <span>Chu kỳ đã học: <b className="text-white">{statusData.total_cycles_learned}</b></span>
-            <span>Độ khớp: <b className="text-emerald-400">{statusData.recent_accuracy_rate}%</b></span>
+            <span>Bậc hiện tại: <b className="text-amber-300">Bậc {escalationLevel} ({escalationInfo.ticket_count} vé)</b></span>
           </div>
-          <p className="text-[11px] text-slate-500">Thưởng lớn khi nổ Jackpot, phạt bậc thang để dẫn hướng hội tụ.</p>
+          <p className="text-[11px] text-slate-500">Tự động leo/hạ từng nấc thang để tối ưu độ phủ săn Độc Đắc.</p>
         </div>
       </div>
 
-      {/* Latest AI Auto-Learned Ticket Display */}
-      {latestAiTicket && (
+      {/* Latest AI Auto-Learned Tickets Display (1 to 4 Tickets) */}
+      {selectedTicket && (
         <div className="bg-slate-850/80 border border-violet-500/30 rounded-2xl p-5 md:p-6 space-y-4">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-800">
-            <div className="flex items-center gap-2.5">
+            <div className="flex flex-wrap items-center gap-2.5">
               <span className="px-3 py-1 rounded-full text-xs font-bold bg-violet-500/10 text-violet-400 border border-violet-500/20 flex items-center gap-1.5">
-                <Brain className="w-3.5 h-3.5" /> Vé AI Tự Động Sinh Cho Kỳ Tới #{latestAiTicket.target_draw_period}
+                <Brain className="w-3.5 h-3.5" /> Tổ Hợp {latestAiTickets.length} Vé AI Cho Kỳ Tới #{selectedTicket.target_draw_period}
               </span>
               <span className="text-xs text-slate-400">
-                Lần xổ: <b className="text-amber-300">{formatDrawDateWithDay(latestAiTicket.target_draw_date)}</b>
+                Lần xổ: <b className="text-amber-300">{formatDrawDateWithDay(selectedTicket.target_draw_date)}</b>
               </span>
             </div>
             <span className="text-xs text-emerald-400 font-semibold flex items-center gap-1">
-              <CheckCircle2 className="w-3.5 h-3.5" /> Đã lưu vào sổ theo dõi học hỏi
+              <CheckCircle2 className="w-3.5 h-3.5" /> Đã lưu {latestAiTickets.length} vé ({latestAiTickets.length * 5} dãy) vào sổ đối soát
             </span>
           </div>
 
-          {/* 5 Rows generated by AI */}
+          {/* Multi-Ticket Selector Tabs when > 1 ticket generated */}
+          {latestAiTickets.length > 1 && (
+            <div className="flex flex-wrap items-center gap-2">
+              {latestAiTickets.map((tItem: any, idx: number) => (
+                <button
+                  key={tItem.id || idx}
+                  onClick={() => setActiveTicketIdx(idx)}
+                  className={`px-3.5 py-2 rounded-xl text-xs font-bold border transition-all flex items-center gap-2 ${
+                    activeTicketIdx === idx
+                      ? "bg-violet-600 text-white border-violet-400 shadow-lg shadow-violet-600/20"
+                      : "bg-slate-900/90 text-slate-400 border-slate-800 hover:border-slate-700 hover:text-slate-200"
+                  }`}
+                >
+                  <span>{tItem.variant_name || `Vé #${idx + 1}`}</span>
+                </button>
+              ))}
+            </div>
+          )}
+
+          {/* 5 Rows of the selected AI Ticket */}
           <div className="space-y-2.5">
-            {latestAiTicket.rows.map((row: number[], rIdx: number) => {
-              const forecast = latestAiTicket.row_forecasts?.[rIdx] || {};
+            {selectedTicket.rows.map((row: number[], rIdx: number) => {
+              const forecast = selectedTicket.row_forecasts?.[rIdx] || {};
               const sum = row.reduce((a, b) => a + b, 0);
               const evens = row.filter((n) => n % 2 === 0).length;
 
@@ -271,7 +366,7 @@ export const HybridLearningDashboard: React.FC<HybridLearningProps> = ({
       {learningLogs.length > 0 && (
         <div className="pt-2">
           <div className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2 flex items-center gap-1.5">
-            <Activity className="w-3.5 h-3.5 text-violet-400" /> Nhật Ký Tự Học Hỏi Gần Nhất
+            <Activity className="w-3.5 h-3.5 text-violet-400" /> Nhật Ký Tự Học Hỏi & Dịch Chuyển Bậc Thang Gần Nhất
           </div>
           <div className="space-y-1.5 max-h-36 overflow-y-auto pr-1 text-xs">
             {learningLogs.slice(-4).reverse().map((log: any, idx: number) => (
@@ -289,3 +384,4 @@ export const HybridLearningDashboard: React.FC<HybridLearningProps> = ({
     </div>
   );
 };
+

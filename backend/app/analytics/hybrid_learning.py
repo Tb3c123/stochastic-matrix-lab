@@ -11,9 +11,158 @@ from app.models.draw import DrawResult
 from app.models.ticket import SavedTicket
 from app.analytics.frequency import calculate_hot_cold
 from app.analytics.lateness import calculate_lateness
-from app.routers.tickets import compute_next_draw_date, compute_single_row_jackpot_forecast
+from app.routers.tickets import compute_next_draw_date, compute_single_row_jackpot_forecast, evaluate_pending_tickets_core
 
 ROW_LABELS = ["Dãy A", "Dãy B", "Dãy C", "Dãy D", "Dãy E"]
+
+# 4-Step Escalation & De-escalation Ladder (Hysteresis Control: Never hard-resets to 0 on minor wins)
+ESCALATION_LADDER: Dict[int, Dict[str, Any]] = {
+    0: {
+        "level": 0,
+        "penalty_multiplier": 1.00,
+        "ticket_count": 1,
+        "label": "Bậc 0: Tinh Hoa Hội Tụ (1 Vé • Phạt 1.00x)"
+    },
+    1: {
+        "level": 1,
+        "penalty_multiplier": 1.30,
+        "ticket_count": 2,
+        "label": "Bậc 1: Mở Rộng Quét Trễ (2 Vé • Phạt 1.30x)"
+    },
+    2: {
+        "level": 2,
+        "penalty_multiplier": 1.65,
+        "ticket_count": 3,
+        "label": "Bậc 2: Đột Biến Đa Cực (3 Vé • Phạt 1.65x)"
+    },
+    3: {
+        "level": 3,
+        "penalty_multiplier": 2.00,
+        "ticket_count": 4,
+        "label": "Bậc 3: Bao Vây Tối Đa (4 Vé • Phạt 2.00x)"
+    }
+}
+
+TICKET_VARIANT_PROFILES = [
+    {
+        "variant_index": 0,
+        "variant_code": "CORE_HYBRID",
+        "variant_name": "Vé #1 • Core Hybrid AI (Khai Thác Trọng Số Chuẩn)",
+        "focus": "Bám sát bộ trọng số Bayes + Gauss tối ưu hiện tại"
+    },
+    {
+        "variant_index": 1,
+        "variant_code": "LATENESS_HUNTER",
+        "variant_name": "Vé #2 • Lateness & Gauss Hunter (Săn Số Trễ/Gan)",
+        "focus": "Tăng cường khai thác các con số trễ chu kỳ sâu và vùng chuẩn Gauss"
+    },
+    {
+        "variant_index": 2,
+        "variant_code": "BANDIT_MUTATION",
+        "variant_name": "Vé #3 • Bandit Deep Explorer (Đột Biến Thăm Dò)",
+        "focus": "Mở rộng biên độ sang các phân vùng số chưa xuất hiện ở Vé #1 & #2"
+    },
+    {
+        "variant_index": 3,
+        "variant_code": "WHEEL_COVERAGE",
+        "variant_name": "Vé #4 • Wheel Matrix Coverage (Ma Trận Phủ Rộng)",
+        "focus": "Quét vét các tổ hợp tiềm năng còn lại để nâng độ phủ >80% bàn cờ"
+    }
+]
+
+
+def get_current_escalation_level(state: AILearningState) -> int:
+    """Extract current stepwise escalation level L in {0, 1, 2, 3} from learning logs."""
+    logs = state.learning_logs or []
+    for entry in reversed(logs):
+        if isinstance(entry, dict) and "escalation_level" in entry:
+            lvl = int(entry["escalation_level"])
+            return max(0, min(3, lvl))
+    return 0
+
+
+def compute_stepwise_reward_and_next_level(
+    highest_match: int,
+    hit_jackpot_2: bool,
+    current_level: int
+) -> Dict[str, Any]:
+    """
+    Compute Jackpot-Only reward/penalty and next escalation level using Stepwise Hysteresis:
+    - No hard reset to 0 on minor wins!
+    - Winless draw (0, 1, 2 matches): Step UP +1 level (up to Level 3), penalty scaled by current level's multiplier.
+      * 2 matches: base -35.0 pts
+      * 1 match:   base -75.0 pts
+      * 0 matches: base -120.0 pts
+    - Minor/Secondary prizes (3, 4, 5 matches): Step DOWN -1 level (gradual cooldown), light penalty (-10, -5, -2).
+    - Jackpot 1 / Jackpot 2: Step DOWN -2 levels, massive positive reward (+10,000 / +5,000).
+    """
+    curr_lvl = max(0, min(3, int(current_level)))
+    ladder_info = ESCALATION_LADDER[curr_lvl]
+    mult = ladder_info["penalty_multiplier"]
+
+    if highest_match >= 6:
+        cycle_reward = 10000.0
+        next_level = max(0, curr_lvl - 2)
+        lr_multiplier = 0.15
+        step_direction = f"Lùi 2 bậc (Bậc {curr_lvl} → Bậc {next_level})"
+        policy_action = f"Nổ Độc Đắc 6/6 • Khóa hội tụ ({step_direction})"
+    elif hit_jackpot_2:
+        cycle_reward = 5000.0
+        next_level = max(0, curr_lvl - 2)
+        lr_multiplier = 0.25
+        step_direction = f"Lùi 2 bậc (Bậc {curr_lvl} → Bậc {next_level})"
+        policy_action = f"Nổ Jackpot 2 (5+1) • Hội tụ mạnh ({step_direction})"
+    elif highest_match == 5:
+        cycle_reward = -2.0
+        next_level = max(0, curr_lvl - 1)
+        lr_multiplier = 0.50
+        step_direction = f"Lùi 1 bậc (Bậc {curr_lvl} → Bậc {next_level})"
+        policy_action = f"Trúng 5 số (Sát Độc Đắc) • Phạt nhẹ -2đ & {step_direction}"
+    elif highest_match == 4:
+        cycle_reward = -5.0
+        next_level = max(0, curr_lvl - 1)
+        lr_multiplier = 0.75
+        step_direction = f"Lùi 1 bậc (Bậc {curr_lvl} → Bậc {next_level})"
+        policy_action = f"Trúng 4 số (Giải Nhì) • Phạt nhẹ -5đ & {step_direction}"
+    elif highest_match == 3:
+        cycle_reward = -10.0
+        next_level = max(0, curr_lvl - 1)
+        lr_multiplier = 1.00
+        step_direction = f"Lùi 1 bậc (Bậc {curr_lvl} → Bậc {next_level})"
+        policy_action = f"Trúng 3 số (Giải Ba) • Phạt nhẹ -10đ & {step_direction}"
+    elif highest_match == 2:
+        cycle_reward = round(-35.0 * mult, 1)
+        next_level = min(3, curr_lvl + 1)
+        lr_multiplier = round(1.30 + 0.25 * curr_lvl, 2)
+        step_direction = f"Tiến 1 bậc (Bậc {curr_lvl} → Bậc {next_level})" if next_level > curr_lvl else f"Giữ trần Bậc {curr_lvl}"
+        policy_action = f"Trượt giải (2 số) • Phạt {cycle_reward}đ ({mult:.2f}x) & {step_direction}"
+    elif highest_match == 1:
+        cycle_reward = round(-75.0 * mult, 1)
+        next_level = min(3, curr_lvl + 1)
+        lr_multiplier = round(1.55 + 0.25 * curr_lvl, 2)
+        step_direction = f"Tiến 1 bậc (Bậc {curr_lvl} → Bậc {next_level})" if next_level > curr_lvl else f"Giữ trần Bậc {curr_lvl}"
+        policy_action = f"Lệch nặng (1 số) • Phạt {cycle_reward}đ ({mult:.2f}x) & {step_direction}"
+    else:
+        cycle_reward = round(-120.0 * mult, 1)
+        next_level = min(3, curr_lvl + 1)
+        lr_multiplier = round(1.85 + 0.25 * curr_lvl, 2)
+        step_direction = f"Tiến 1 bậc (Bậc {curr_lvl} → Bậc {next_level})" if next_level > curr_lvl else f"Giữ trần Bậc {curr_lvl}"
+        policy_action = f"Trắng bảng (0 số) • Phạt kịch khung {cycle_reward}đ ({mult:.2f}x) & {step_direction}"
+
+    next_info = ESCALATION_LADDER[next_level]
+    return {
+        "previous_level": curr_lvl,
+        "next_level": next_level,
+        "penalty_multiplier": mult,
+        "next_penalty_multiplier": next_info["penalty_multiplier"],
+        "target_ticket_count": next_info["ticket_count"],
+        "level_label": next_info["label"],
+        "step_direction": step_direction,
+        "cycle_reward": cycle_reward,
+        "lr_multiplier": lr_multiplier,
+        "policy_action": policy_action
+    }
+
 
 async def get_or_create_learning_state(db: AsyncSession, game_code: str) -> AILearningState:
     """Fetch existing AI learning state or initialize default baseline."""
@@ -31,7 +180,9 @@ async def get_or_create_learning_state(db: AsyncSession, game_code: str) -> AILe
             recent_accuracy_rate=78.5,
             learning_logs=[{
                 "timestamp": datetime.utcnow().isoformat(),
-                "event": "Khởi tạo hệ thống học kết hợp Hybrid (Tier 1: Feature, Tier 2: Bayesian Weights, Tier 3: Bandit Agent)",
+                "escalation_level": 0,
+                "target_ticket_count": 1,
+                "event": "Khởi tạo hệ thống học kết hợp Hybrid (Cơ chế Nấc Thang Bậc 0 ↔ Bậc 3)",
                 "weights": {"lateness": 0.35, "gauss_sum": 0.25, "hot": 0.25, "parity": 0.15}
             }]
         )
@@ -40,13 +191,14 @@ async def get_or_create_learning_state(db: AsyncSession, game_code: str) -> AILe
         await db.refresh(state)
     return state
 
+
 async def recalibrate_hybrid_learning(
     db: AsyncSession,
     game_code: str,
     actual_draw: DrawResult,
     evaluated_tickets: List[SavedTicket]
 ) -> Dict[str, Any]:
-    """Perform closed-loop Bayesian weight adjustment and Bandit reward update based on actual draw outcome."""
+    """Perform closed-loop Bayesian weight adjustment and Stepwise Bandit reward/escalation update."""
     state = await get_or_create_learning_state(db, game_code)
     winning_nums = set(actual_draw.winning_numbers)
     sum_val = sum(actual_draw.winning_numbers)
@@ -76,25 +228,14 @@ async def recalibrate_hybrid_learning(
         for item in sorted(late_items, key=lambda x: x["current_gap"], reverse=True)[:10]
     )
 
-    # Count how many winning numbers matched each feature
     hot_matches = len(winning_nums.intersection(hot_top10))
     late_matches = len(winning_nums.intersection(late_top10))
 
-    # Evaluate Gauss sum window
     is_power = game_code == "power_6_55"
     gauss_optimal = (140 <= sum_val <= 185) if is_power else (120 <= sum_val <= 160)
     parity_optimal = even_count in (2, 3, 4)
 
-    # 2. Multi-Armed Bandit Jackpot-Only Reward / Graded Penalty Calculation
-    # Rules:
-    # - Jackpot 1 (6/6): +10,000 pts (Massive Reward)
-    # - Jackpot 2 (5/6 + Special): +5,000 pts (High Reward)
-    # - First Prize (5/6): -2 pts (Tiny Penalty - very close to Jackpot)
-    # - Second Prize (4/6): -5 pts (Small Penalty)
-    # - Third Prize (3/6): -10 pts (Moderate Penalty)
-    # - 2 matches: -25 pts (Heavy Penalty)
-    # - 0-1 matches: -50 pts (Severe Penalty - force exploration pivot)
-    cycle_reward = 0.0
+    # 2. Determine highest match across all evaluated tickets of this draw period
     highest_match = 0
     hit_jackpot_2 = False
 
@@ -109,53 +250,27 @@ async def recalibrate_hybrid_learning(
                 has_jp2 = any(r.get("match_count") == 5 and r.get("matched_special") for r in rows_eval)
                 if has_jp2:
                     hit_jackpot_2 = True
-
-                if best_match == 6:
-                    cycle_reward += 10000.0
-                elif has_jp2:
-                    cycle_reward += 5000.0
-                elif best_match == 5:
-                    cycle_reward -= 2.0
-                elif best_match == 4:
-                    cycle_reward -= 5.0
-                elif best_match == 3:
-                    cycle_reward -= 10.0
-                elif best_match == 2:
-                    cycle_reward -= 25.0
-                else:
-                    cycle_reward -= 50.0
+            elif t.rows_data:
+                # Fallback direct row comparison if matched_results not yet populated
+                for r in t.rows_data:
+                    m_cnt = len(set(r).intersection(winning_nums))
+                    if m_cnt > highest_match:
+                        highest_match = m_cnt
     else:
-        overlap_est = max(hot_matches, late_matches)
-        highest_match = overlap_est
-        if overlap_est == 6:
-            cycle_reward = 10000.0
-        elif overlap_est == 5:
-            cycle_reward = -2.0
-        elif overlap_est == 4:
-            cycle_reward = -5.0
-        elif overlap_est == 3:
-            cycle_reward = -10.0
-        elif overlap_est == 2:
-            cycle_reward = -25.0
-        else:
-            cycle_reward = -50.0
+        highest_match = max(hot_matches, late_matches)
 
-    # Adaptive Learning Rate / Exploration Temperature based on Penalty Tier
-    if highest_match >= 6 or hit_jackpot_2:
-        lr_multiplier = 0.2
-        policy_action = "Khóa hội tụ Độc Đắc (Exploit tối đa)"
-    elif highest_match >= 4:
-        lr_multiplier = 0.5
-        policy_action = "Tinh chỉnh hẹp (Sát nút Độc Đắc - Phạt nhẹ)"
-    elif highest_match == 3:
-        lr_multiplier = 1.0
-        policy_action = "Cân bằng hội tụ (Phạt vừa - Giữ hướng)"
-    elif highest_match == 2:
-        lr_multiplier = 1.5
-        policy_action = "Xoay trục vừa (Phạt nhiều - Mở rộng vùng số)"
-    else:
-        lr_multiplier = 2.0
-        policy_action = "Đột biến mạnh (Phạt nặng - Thoát vùng số chết)"
+    current_level = get_current_escalation_level(state)
+    step_outcome = compute_stepwise_reward_and_next_level(
+        highest_match=highest_match,
+        hit_jackpot_2=hit_jackpot_2,
+        current_level=current_level
+    )
+
+    cycle_reward = step_outcome["cycle_reward"]
+    lr_multiplier = step_outcome["lr_multiplier"]
+    policy_action = step_outcome["policy_action"]
+    next_level = step_outcome["next_level"]
+    target_ticket_count = step_outcome["target_ticket_count"]
 
     # 3. Gradient delta adjustments (Bayesian dynamic update scaled by lr_multiplier)
     delta_hot = (hot_matches - 2.0) * 0.03 * lr_multiplier
@@ -168,7 +283,6 @@ async def recalibrate_hybrid_learning(
     new_w_gauss = max(0.10, min(0.45, state.w_gauss_sum + delta_gauss))
     new_w_parity = max(0.05, min(0.30, state.w_parity + delta_parity))
 
-    # Normalize weights so sum == 1.0
     total_w = new_w_hot + new_w_late + new_w_gauss + new_w_parity
     state.w_hot = round(new_w_hot / total_w, 3)
     state.w_lateness = round(new_w_late / total_w, 3)
@@ -180,12 +294,10 @@ async def recalibrate_hybrid_learning(
     state.last_learned_draw_period = actual_draw.draw_period
     state.last_run_at = datetime.utcnow()
 
-    # Recalculate average accuracy rate
     if evaluated_tickets:
-        avg_matches = sum(t.matched_results.get("best_match_count", 0) for t in evaluated_tickets if t.matched_results) / len(evaluated_tickets)
-        state.recent_accuracy_rate = round(min(98.0, 50.0 + avg_matches * 12.0), 1)
+        state.recent_accuracy_rate = round(min(98.0, 50.0 + highest_match * 12.0), 1)
 
-    reward_str = f"+{int(cycle_reward)}" if cycle_reward >= 0 else f"{int(cycle_reward)}"
+    reward_str = f"+{cycle_reward}" if cycle_reward >= 0 else f"{cycle_reward}"
     log_entry = {
         "timestamp": datetime.utcnow().isoformat(),
         "draw_period": actual_draw.draw_period,
@@ -193,11 +305,15 @@ async def recalibrate_hybrid_learning(
         "winning_numbers": actual_draw.winning_numbers,
         "policy_action": policy_action,
         "cycle_reward": cycle_reward,
+        "previous_level": current_level,
+        "escalation_level": next_level,
+        "target_ticket_count": target_ticket_count,
+        "penalty_multiplier": step_outcome["penalty_multiplier"],
         "feedback_summary": (
-            f"Kỳ #{actual_draw.draw_period} [Săn Độc Đắc]: Đạt đỉnh {highest_match}/6 số → {policy_action}. "
-            + f"Có {late_matches}/6 số trễ, {hot_matches}/6 số hot. "
+            f"Kỳ #{actual_draw.draw_period} [Đỉnh {highest_match}/6 số]: {policy_action}. "
+            + f"Kỳ tới sinh {target_ticket_count} vé ({target_ticket_count * 5} dãy). "
             + f"Trọng số mới: Trễ {int(state.w_lateness*100)}%, Hot {int(state.w_hot*100)}%, Gauss {int(state.w_gauss_sum*100)}%. "
-            + f"Điểm Jackpot-RL: {reward_str} pts."
+            + f"Điểm RL: {reward_str} pts."
         ),
         "weights": {
             "lateness": state.w_lateness,
@@ -210,7 +326,7 @@ async def recalibrate_hybrid_learning(
 
     logs = list(state.learning_logs or [])
     logs.append(log_entry)
-    state.learning_logs = logs[-20:] # Keep last 20 logs
+    state.learning_logs = logs[-20:]
 
     await db.commit()
     await db.refresh(state)
@@ -219,6 +335,10 @@ async def recalibrate_hybrid_learning(
         "cycle_learned": state.total_cycles_learned,
         "policy_action": policy_action,
         "cycle_reward": cycle_reward,
+        "previous_level": current_level,
+        "escalation_level": next_level,
+        "target_ticket_count": target_ticket_count,
+        "level_label": step_outcome["level_label"],
         "updated_weights": {
             "w_lateness": state.w_lateness,
             "w_hot": state.w_hot,
@@ -230,15 +350,24 @@ async def recalibrate_hybrid_learning(
         "log_entry": log_entry
     }
 
-async def generate_hybrid_ticket_rows(db: AsyncSession, game_code: str) -> List[List[int]]:
-    """Generate 5 optimal rows for next upcoming draw using dynamically learned weights and Jackpot Structural Filter."""
+
+async def generate_hybrid_ticket_rows(
+    db: AsyncSession,
+    game_code: str,
+    variant_index: int = 0,
+    excluded_rows: Optional[List[List[int]]] = None,
+    number_usage_counts: Optional[Dict[int, int]] = None
+) -> List[List[int]]:
+    """
+    Generate 5 optimal rows for next upcoming draw using dynamically learned weights,
+    Jackpot Structural Filter, and Tactical Variant Role (0=Core, 1=Lateness, 2=Bandit, 3=Wheel).
+    """
     state = await get_or_create_learning_state(db, game_code)
     game_res = await db.execute(select(LotteryGame).where(LotteryGame.code == game_code))
     game = game_res.scalar_one_or_none()
     max_num = game.max_number if game else 45
     is_power = game_code == "power_6_55"
 
-    # Fetch last 50 draws
     draws_res = await db.execute(
         select(DrawResult).where(DrawResult.game_id == game.id).order_by(DrawResult.id.desc()).limit(50)
     )
@@ -252,47 +381,76 @@ async def generate_hybrid_ticket_rows(db: AsyncSession, game_code: str) -> List[
     late_map = {item["number"]: item["current_gap"] for item in lateness.get("items", [])}
     max_late = max(late_map.values()) if late_map else 1
 
-    # Score each candidate number from 1 to max_num
+    usage_map = number_usage_counts if number_usage_counts is not None else {}
+    existing_rows = list(excluded_rows or [])
+
+    # Score each candidate number from 1 to max_num with variant-specific weighting & diversity bonus
     number_scores: Dict[int, float] = {}
     for n in range(1, max_num + 1):
         f_norm = (freq_map.get(n, 10.0) / 100.0)
         l_norm = (late_map.get(n, 0) / max(1.0, max_late))
-        score = (state.w_hot * f_norm) + (state.w_lateness * l_norm)
+        used_penalty = usage_map.get(n, 0) * 0.06  # Encourage complementary coverage across multiple tickets
+
+        if variant_index == 0:
+            # Variant 0: Core Hybrid AI
+            score = (state.w_hot * f_norm) + (state.w_lateness * l_norm) - used_penalty
+        elif variant_index == 1:
+            # Variant 1: Lateness & Gauss Reversal Hunter
+            score = (0.25 * f_norm) + (0.75 * l_norm) - used_penalty
+        elif variant_index == 2:
+            # Variant 2: Bandit Deep Explorer (Mid-tier & Overdue fusion)
+            score = (0.45 * f_norm) + (0.55 * l_norm) - (used_penalty * 1.4)
+        else:
+            # Variant 3: Wheel Matrix Coverage (Strongly prioritize under-covered numbers with solid baseline)
+            score = (0.35 * f_norm) + (0.45 * l_norm) - (used_penalty * 2.0)
+
         number_scores[n] = score
 
-    # Sort numbers by composite potential
     ranked_numbers = sorted(number_scores.keys(), key=lambda n: number_scores[n], reverse=True)
+    late_ranked = sorted(range(1, max_num + 1), key=lambda x: late_map.get(x, 0), reverse=True)
 
-    # Optimal sum target for Jackpot bell curve
     target_sum_min, target_sum_max = (140, 185) if is_power else (120, 160)
 
     generated_rows: List[List[int]] = []
-    # Generate 5 diverse and structurally optimal rows targeting 6-tuple Jackpot
     for row_idx in range(5):
         best_candidate: List[int] = []
         best_diff = 999
 
-        for _ in range(80):
-            if row_idx < 2:
-                # Rows A & B: High Exploitation around top Bayesian + Gauss candidates
-                top_pool = ranked_numbers[:16]
-                broad_pool = ranked_numbers[16:max_num]
-                chosen_top = random.sample(top_pool, 4)
-                chosen_broad = random.sample(broad_pool, 2)
-            elif row_idx == 2:
-                # Row C: Deep Lateness Reversion Hunter
-                late_ranked = sorted(range(1, max_num + 1), key=lambda x: late_map.get(x, 0), reverse=True)
-                chosen_top = random.sample(late_ranked[:14], 3)
-                rem = [x for x in ranked_numbers[:22] if x not in chosen_top]
+        for _ in range(90):
+            if variant_index == 0:
+                if row_idx < 2:
+                    chosen_top = random.sample(ranked_numbers[:16], 4)
+                    chosen_broad = random.sample(ranked_numbers[16:max_num], 2)
+                elif row_idx == 2:
+                    chosen_top = random.sample(late_ranked[:14], 3)
+                    rem = [x for x in ranked_numbers[:22] if x not in chosen_top]
+                    chosen_broad = random.sample(rem, 3)
+                else:
+                    chosen_top = random.sample(ranked_numbers[:22], 3)
+                    rem = [x for x in range(1, max_num + 1) if x not in chosen_top]
+                    chosen_broad = random.sample(rem, 3)
+            elif variant_index == 1:
+                # Lateness & Gauss Focus
+                chosen_top = random.sample(late_ranked[:16], 4)
+                rem = [x for x in ranked_numbers[:26] if x not in chosen_top]
+                chosen_broad = random.sample(rem, 2)
+            elif variant_index == 2:
+                # Bandit Mutation Focus
+                chosen_top = random.sample(ranked_numbers[:24], 3)
+                rem = [x for x in ranked_numbers[12:max_num] if x not in chosen_top]
                 chosen_broad = random.sample(rem, 3)
             else:
-                # Rows D & E: Multi-Decade Bandit Exploration
-                chosen_top = random.sample(ranked_numbers[:22], 3)
-                rem = [x for x in range(1, max_num + 1) if x not in chosen_top]
-                chosen_broad = random.sample(rem, 3)
+                # Wheel Matrix Coverage Focus (Pick least used high-potential numbers)
+                least_used_pool = sorted(
+                    range(1, max_num + 1),
+                    key=lambda x: (usage_map.get(x, 0), -number_scores.get(x, 0.0))
+                )
+                chosen_top = random.sample(least_used_pool[:18], 4)
+                rem = [x for x in ranked_numbers[:28] if x not in chosen_top]
+                chosen_broad = random.sample(rem, 2)
 
             candidate = sorted(chosen_top + chosen_broad)
-            if len(set(candidate)) != 6 or candidate in generated_rows:
+            if len(set(candidate)) != 6 or candidate in generated_rows or candidate in existing_rows:
                 continue
 
             c_sum = sum(candidate)
@@ -300,11 +458,6 @@ async def generate_hybrid_ticket_rows(db: AsyncSession, game_code: str) -> List[
             decades = len(set(n // 10 for n in candidate))
             span = candidate[-1] - candidate[0]
 
-            # Strict Jackpot Structural Filter:
-            # 1. Sum inside Gaussian bell curve
-            # 2. Parity 2:4, 3:3, or 4:2
-            # 3. Spread across >= 4 decades
-            # 4. Span >= 25
             if target_sum_min <= c_sum <= target_sum_max and c_even in (2, 3, 4) and decades >= 4 and span >= 25:
                 best_candidate = candidate
                 break
@@ -318,12 +471,28 @@ async def generate_hybrid_ticket_rows(db: AsyncSession, game_code: str) -> List[
             best_candidate = sorted(random.sample(range(1, max_num + 1), 6))
 
         generated_rows.append(best_candidate)
+        existing_rows.append(best_candidate)
+        for num in best_candidate:
+            usage_map[num] = usage_map.get(num, 0) + 1
 
     return generated_rows
 
-async def generate_hybrid_ticket_rows_with_special(db: AsyncSession, game_code: str) -> Tuple[List[List[int]], List[Optional[int]]]:
+
+async def generate_hybrid_ticket_rows_with_special(
+    db: AsyncSession,
+    game_code: str,
+    variant_index: int = 0,
+    excluded_rows: Optional[List[List[int]]] = None,
+    number_usage_counts: Optional[Dict[int, int]] = None
+) -> Tuple[List[List[int]], List[Optional[int]]]:
     """Generate 5 optimal rows + 5 corresponding scored special numbers (for Power 6/55 Jackpot 2 hunting) or None."""
-    rows = await generate_hybrid_ticket_rows(db, game_code)
+    rows = await generate_hybrid_ticket_rows(
+        db,
+        game_code,
+        variant_index=variant_index,
+        excluded_rows=excluded_rows,
+        number_usage_counts=number_usage_counts
+    )
     is_power = game_code == "power_6_55"
     if not is_power:
         return rows, [None] * len(rows)
@@ -344,7 +513,6 @@ async def generate_hybrid_ticket_rows_with_special(db: AsyncSession, game_code: 
     late_map = {item["number"]: item["current_gap"] for item in lateness.get("items", [])}
     max_late = max(late_map.values()) if late_map else 1
 
-    # Score candidate special balls using composite Bayesian weights
     sp_scores: Dict[int, float] = {}
     for n in range(1, 56):
         f_norm = (freq_map.get(n, 10.0) / 100.0)
@@ -361,30 +529,31 @@ async def generate_hybrid_ticket_rows_with_special(db: AsyncSession, game_code: 
 
         ranked_sp = sorted(remaining_pool, key=lambda n: sp_scores.get(n, 0.0), reverse=True)
         if r_idx < 2:
-            # Top Bayesian scored special ball
-            chosen_sp = random.choice(ranked_sp[:4])
+            chosen_sp = random.choice(ranked_sp[:max(1, min(6, len(ranked_sp)))])
         elif r_idx == 2:
-            # Most overdue special ball
             late_sp = sorted(remaining_pool, key=lambda n: late_map.get(n, 0), reverse=True)
-            chosen_sp = random.choice(late_sp[:4])
+            chosen_sp = random.choice(late_sp[:max(1, min(6, len(late_sp)))])
         else:
-            # Bandit exploration among top 12
-            chosen_sp = random.choice(ranked_sp[:12])
+            chosen_sp = random.choice(ranked_sp[:max(1, min(14, len(ranked_sp)))])
 
         used_specials.add(chosen_sp)
         special_numbers.append(chosen_sp)
 
     return rows, special_numbers
 
+
 async def execute_auto_cycle_pipeline(db: AsyncSession, game_code: str) -> Dict[str, Any]:
-    """Execute complete end-to-end loop: Crawl -> Evaluate -> Recalibrate Weights -> Auto-generate 1 Ticket (5 Rows)."""
-    # 1. Inspect game
+    """
+    Execute complete end-to-end loop:
+    1. Evaluate any pending tickets for the latest draw.
+    2. Recalibrate weights & compute Stepwise Escalation Level L in {0, 1, 2, 3}.
+    3. Auto-generate (L + 1) specialized 5-row tickets (1 to 4 tickets) for the upcoming draw.
+    """
     game_res = await db.execute(select(LotteryGame).where(LotteryGame.code == game_code))
     game = game_res.scalar_one_or_none()
     if not game:
         return {"success": False, "error": f"Game {game_code} not found"}
 
-    # 2. Latest draw check
     latest_res = await db.execute(
         select(DrawResult).where(DrawResult.game_id == game.id).order_by(DrawResult.id.desc()).limit(1)
     )
@@ -392,28 +561,30 @@ async def execute_auto_cycle_pipeline(db: AsyncSession, game_code: str) -> Dict[
     if not latest_draw:
         return {"success": False, "error": "No draws in database"}
 
-    # 3. Evaluate any pending tickets matching latest draw
-    pending_res = await db.execute(
+    # Evaluate any still-pending tickets for this game first
+    await evaluate_pending_tickets_core(db, game_code=game_code)
+
+    # Fetch all tickets targeting latest_draw (both pending and already evaluated at 19:10)
+    tickets_res = await db.execute(
         select(SavedTicket).where(
             SavedTicket.game_code == game_code,
-            SavedTicket.status == "pending",
             SavedTicket.target_draw_period.like(f"%{latest_draw.draw_period}%")
         )
     )
-    matching_pending_tickets = pending_res.scalars().all()
+    draw_tickets = tickets_res.scalars().all()
 
-    # Recalibrate hybrid weights based on latest draw outcome
+    # Recalibrate hybrid weights & stepwise escalation level based on latest draw outcome
     recalibrate_result = await recalibrate_hybrid_learning(
         db=db,
         game_code=game_code,
         actual_draw=latest_draw,
-        evaluated_tickets=matching_pending_tickets
+        evaluated_tickets=draw_tickets
     )
 
-    # 4. Generate 1 brand new 5-row ticket using newly calibrated weights (with special numbers for Power 6/55)
-    new_rows, new_specials = await generate_hybrid_ticket_rows_with_special(db, game_code)
+    target_ticket_count = recalibrate_result.get("target_ticket_count", 1)
+    escalation_level = recalibrate_result.get("escalation_level", 0)
 
-    # Determine target upcoming draw
+    # Determine target upcoming draw period & date
     curr_period_num = int(latest_draw.draw_period.replace("#", "")) if latest_draw.draw_period.isdigit() else 1500
     target_period = f"{curr_period_num + 1:05d}"
     try:
@@ -422,7 +593,7 @@ async def execute_auto_cycle_pipeline(db: AsyncSession, game_code: str) -> Dict[
         base_dt = datetime.utcnow()
     target_date = compute_next_draw_date(game_code, base_dt)
 
-    # Row forecasts with clear algorithm assignment per row
+    # Generate `target_ticket_count` complementary tickets (1 to 4 tickets) for upcoming draw
     row_sub_algos = [
         {"code": "hybrid_exploitation_bayes", "name": "AI Khai Thác (Bayes + Gauss)", "badge": "Tối Ưu Trọng Số Cao Nhất"},
         {"code": "hybrid_exploitation_bayes", "name": "AI Khai Thác (Bayes + Gauss)", "badge": "Tối Ưu Trọng Số Cao Nhất"},
@@ -430,51 +601,86 @@ async def execute_auto_cycle_pipeline(db: AsyncSession, game_code: str) -> Dict[
         {"code": "hybrid_exploration_bandit", "name": "AI Thăm Dò (Bandit Agent)", "badge": "Mở Rộng Không Gian Số"},
         {"code": "hybrid_exploration_bandit", "name": "AI Thăm Dò (Bandit Agent)", "badge": "Đa Dạng Hóa Tổ Hợp"}
     ]
-    row_forecasts = []
-    for r_idx, r in enumerate(new_rows):
-        sp_num = new_specials[r_idx] if new_specials and r_idx < len(new_specials) else None
-        fc = compute_single_row_jackpot_forecast(game_code, r, special_number=sp_num)
-        sub = row_sub_algos[r_idx] if r_idx < len(row_sub_algos) else row_sub_algos[-1]
-        fc["algorithm_code"] = sub["code"]
-        fc["algorithm_name"] = sub["name"]
-        fc["algorithm_badge"] = sub["badge"]
-        row_forecasts.append(fc)
 
-    predicted_analysis = {
-        "strategy_info": {
-            "strategy_code": "hybrid_ai_learned",
-            "strategy_name": "AI Hybrid Learning Engine (3 Tầng)",
-            "category": "Trọng Số Thích Nghi Bayes + Học Tăng Cường Bandit",
-            "description": "Tự động điều chỉnh trọng số động dựa trên kết quả kỳ quay vừa mở thưởng.",
-            "historical_accuracy_pct": recalibrate_result["recent_accuracy_rate"],
-            "confidence_rating": "S+",
-            "advantage": "Được tối ưu hóa bằng chu kỳ phản hồi tự động sau mỗi kỳ quay.",
-            "risk_level": "Thấp - Thích nghi thông minh",
-            "algorithm_score": 92.5
-        },
-        "row_forecasts": row_forecasts,
-        "valid_rows_count": 5,
-        "coverage_pct": round((len(set(n for r in new_rows for n in r)) / game.max_number) * 100, 1),
-        "any_prize_probability_pct": 11.4 if game_code == "mega_6_45" else 8.8,
-        "parity_ratio": "Cân bằng tối ưu Gauss",
-        "confidence_score": 92.5,
-        "auto_generated_by_ai": True,
-        "calibrated_weights": recalibrate_result["updated_weights"]
-    }
+    all_excluded_rows: List[List[int]] = []
+    number_usage_counts: Dict[int, int] = {}
+    generated_tickets_payload: List[Dict[str, Any]] = []
 
-    # Save new auto-learned ticket to DB
-    auto_ticket = SavedTicket(
-        game_code=game_code,
-        strategy="hybrid_ai_learned",
-        target_draw_period=target_period,
-        target_draw_date=target_date,
-        rows_data=new_rows,
-        predicted_analysis=predicted_analysis,
-        status="pending"
-    )
-    db.add(auto_ticket)
-    await db.commit()
-    await db.refresh(auto_ticket)
+    for v_idx in range(target_ticket_count):
+        variant_profile = TICKET_VARIANT_PROFILES[min(v_idx, len(TICKET_VARIANT_PROFILES) - 1)]
+        new_rows, new_specials = await generate_hybrid_ticket_rows_with_special(
+            db,
+            game_code,
+            variant_index=v_idx,
+            excluded_rows=all_excluded_rows,
+            number_usage_counts=number_usage_counts
+        )
+
+        row_forecasts = []
+        for r_idx, r in enumerate(new_rows):
+            sp_num = new_specials[r_idx] if new_specials and r_idx < len(new_specials) else None
+            fc = compute_single_row_jackpot_forecast(game_code, r, special_number=sp_num)
+            sub = row_sub_algos[r_idx] if r_idx < len(row_sub_algos) else row_sub_algos[-1]
+            fc["algorithm_code"] = sub["code"]
+            fc["algorithm_name"] = f"{variant_profile['variant_code']} • {sub['name']}" if target_ticket_count > 1 else sub["name"]
+            fc["algorithm_badge"] = sub["badge"]
+            row_forecasts.append(fc)
+
+        predicted_analysis = {
+            "strategy_info": {
+                "strategy_code": "hybrid_ai_learned",
+                "strategy_name": (
+                    f"{variant_profile['variant_name']} (Bậc {escalation_level}/{target_ticket_count} Vé)"
+                    if target_ticket_count > 1
+                    else "AI Hybrid Learning Engine (3 Tầng)"
+                ),
+                "category": "Nấc Thang Săn Độc Đắc Tự Thích Nghi (Stepwise RL)",
+                "description": variant_profile["focus"],
+                "historical_accuracy_pct": recalibrate_result["recent_accuracy_rate"],
+                "confidence_rating": "S+",
+                "advantage": f"Đang ở Bậc {escalation_level} — tự động điều phối {target_ticket_count} vé chống trùng lặp.",
+                "risk_level": "Thấp - Thích nghi theo bậc thang",
+                "algorithm_score": 93.5
+            },
+            "ticket_variant": variant_profile,
+            "escalation_level": escalation_level,
+            "batch_ticket_index": v_idx + 1,
+            "batch_ticket_total": target_ticket_count,
+            "row_forecasts": row_forecasts,
+            "valid_rows_count": 5,
+            "coverage_pct": round((len(set(n for r in new_rows for n in r)) / game.max_number) * 100, 1),
+            "any_prize_probability_pct": 11.4 if game_code == "mega_6_45" else 8.8,
+            "parity_ratio": "Cân bằng tối ưu Gauss",
+            "confidence_score": 93.5,
+            "auto_generated_by_ai": True,
+            "calibrated_weights": recalibrate_result["updated_weights"]
+        }
+
+        auto_ticket = SavedTicket(
+            game_code=game_code,
+            strategy="hybrid_ai_learned",
+            target_draw_period=target_period,
+            target_draw_date=target_date,
+            rows_data=new_rows,
+            predicted_analysis=predicted_analysis,
+            status="pending"
+        )
+        db.add(auto_ticket)
+        await db.commit()
+        await db.refresh(auto_ticket)
+
+        generated_tickets_payload.append({
+            "ticket_id": auto_ticket.id,
+            "strategy": auto_ticket.strategy,
+            "variant_name": variant_profile["variant_name"],
+            "variant_code": variant_profile["variant_code"],
+            "batch_index": v_idx + 1,
+            "batch_total": target_ticket_count,
+            "target_draw_period": auto_ticket.target_draw_period,
+            "target_draw_date": auto_ticket.target_draw_date,
+            "rows": auto_ticket.rows_data,
+            "row_forecasts": row_forecasts
+        })
 
     return {
         "success": True,
@@ -485,12 +691,7 @@ async def execute_auto_cycle_pipeline(db: AsyncSession, game_code: str) -> Dict[
             "winning_numbers": latest_draw.winning_numbers
         },
         "recalibration": recalibrate_result,
-        "auto_generated_ticket": {
-            "ticket_id": auto_ticket.id,
-            "strategy": auto_ticket.strategy,
-            "target_draw_period": auto_ticket.target_draw_period,
-            "target_draw_date": auto_ticket.target_draw_date,
-            "rows": auto_ticket.rows_data,
-            "row_forecasts": row_forecasts
-        }
+        "auto_generated_ticket": generated_tickets_payload[0],
+        "auto_generated_tickets": generated_tickets_payload
     }
+

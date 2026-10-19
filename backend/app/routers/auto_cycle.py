@@ -9,7 +9,9 @@ from app.models.learning import AILearningState
 from app.schemas.common import ResponseEnvelope, ErrorDetail
 from app.analytics.hybrid_learning import (
     get_or_create_learning_state,
-    execute_auto_cycle_pipeline
+    execute_auto_cycle_pipeline,
+    get_current_escalation_level,
+    ESCALATION_LADDER
 )
 
 router = APIRouter(prefix="/auto-cycle", tags=["AI Hybrid Auto Cycle"])
@@ -19,29 +21,44 @@ async def get_auto_cycle_status(
     game_code: str = Query("mega_6_45"),
     db: AsyncSession = Depends(get_db_session)
 ):
-    """Get current AI hybrid learning weights, automation schedule and latest auto-generated ticket."""
+    """Get current AI hybrid learning weights, stepwise escalation ladder state, and latest auto-generated tickets."""
     state = await get_or_create_learning_state(db, game_code)
+    current_level = get_current_escalation_level(state)
+    escalation_info = ESCALATION_LADDER.get(current_level, ESCALATION_LADDER[0])
 
     # Fetch latest auto-generated AI ticket if any
     latest_ticket_res = await db.execute(
         select(SavedTicket).where(
             SavedTicket.game_code == game_code,
             SavedTicket.strategy == "hybrid_ai_learned"
-        ).order_by(SavedTicket.id.desc()).limit(1)
+        ).order_by(SavedTicket.id.desc()).limit(4)
     )
-    latest_ticket = latest_ticket_res.scalar_one_or_none()
+    recent_tickets = latest_ticket_res.scalars().all()
 
     latest_ticket_data = None
-    if latest_ticket:
-        latest_ticket_data = {
-            "id": latest_ticket.id,
-            "target_draw_period": latest_ticket.target_draw_period,
-            "target_draw_date": latest_ticket.target_draw_date,
-            "rows": latest_ticket.rows_data,
-            "status": latest_ticket.status,
-            "row_forecasts": latest_ticket.predicted_analysis.get("row_forecasts", []),
-            "created_at": latest_ticket.created_at.isoformat()
-        }
+    latest_tickets_batch = []
+    if recent_tickets:
+        latest_period = recent_tickets[0].target_draw_period
+        same_period_tickets = [t for t in reversed(recent_tickets) if t.target_draw_period == latest_period]
+        for idx, t in enumerate(same_period_tickets):
+            pa = t.predicted_analysis or {}
+            variant = pa.get("ticket_variant", {})
+            item = {
+                "id": t.id,
+                "batch_index": pa.get("batch_ticket_index", idx + 1),
+                "batch_total": pa.get("batch_ticket_total", len(same_period_tickets)),
+                "variant_code": variant.get("variant_code", "CORE_HYBRID"),
+                "variant_name": variant.get("variant_name", f"Vé #{idx + 1} • Core Hybrid AI"),
+                "variant_focus": variant.get("focus", "Tối ưu trọng số Bayes + Gauss"),
+                "target_draw_period": t.target_draw_period,
+                "target_draw_date": t.target_draw_date,
+                "rows": t.rows_data,
+                "status": t.status,
+                "row_forecasts": pa.get("row_forecasts", []),
+                "created_at": t.created_at.isoformat()
+            }
+            latest_tickets_batch.append(item)
+        latest_ticket_data = latest_tickets_batch[0]
 
     return ResponseEnvelope(
         success=True,
@@ -52,6 +69,9 @@ async def get_auto_cycle_status(
             "total_cycles_learned": state.total_cycles_learned,
             "recent_accuracy_rate": state.recent_accuracy_rate,
             "bandit_cumulative_reward": state.bandit_cumulative_reward,
+            "escalation_level": current_level,
+            "escalation_info": escalation_info,
+            "escalation_ladder": list(ESCALATION_LADDER.values()),
             "weights": {
                 "w_lateness": state.w_lateness,
                 "w_gauss_sum": state.w_gauss_sum,
@@ -61,7 +81,8 @@ async def get_auto_cycle_status(
             "last_learned_draw_period": state.last_learned_draw_period,
             "last_run_at": state.last_run_at.isoformat() if state.last_run_at else None,
             "learning_logs": state.learning_logs or [],
-            "latest_ai_ticket": latest_ticket_data
+            "latest_ai_ticket": latest_ticket_data,
+            "latest_ai_tickets": latest_tickets_batch
         }
     )
 
@@ -70,7 +91,7 @@ async def run_auto_cycle_now(
     game_code: str = Query("mega_6_45"),
     db: AsyncSession = Depends(get_db_session)
 ):
-    """Trigger the automated continuous learning loop immediately: Evaluate -> Learn -> Generate 1 New Ticket (5 Rows)."""
+    """Trigger the automated continuous learning loop immediately: Evaluate -> Stepwise Learn -> Generate 1..4 New Tickets."""
     result = await execute_auto_cycle_pipeline(db, game_code)
     if not result.get("success"):
         return ResponseEnvelope(
@@ -78,3 +99,4 @@ async def run_auto_cycle_now(
             error=ErrorDetail(code="AUTO_CYCLE_FAILED", message=result.get("error", "Vòng lặp tự động thất bại"))
         )
     return ResponseEnvelope(success=True, data=result)
+
