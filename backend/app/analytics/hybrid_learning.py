@@ -72,20 +72,34 @@ TICKET_VARIANT_PROFILES = [
 
 
 def get_current_escalation_level(state: AILearningState) -> int:
-    """Extract current stepwise escalation level L in {0, 1, 2, 3} from learning logs."""
+    """Extract current stepwise escalation level L in {0, 1, 2, 3} from learning logs,
+    enforcing minimum floor if cumulative deficit is deep."""
+    lvl = 0
     logs = state.learning_logs or []
     for entry in reversed(logs):
         if isinstance(entry, dict) and "escalation_level" in entry:
-            lvl = int(entry["escalation_level"])
-            return max(0, min(3, lvl))
-    return 0
+            lvl = max(0, min(3, int(entry["escalation_level"])))
+            break
+
+    # Enforce cumulative deficit floor (Sàn Bậc Thang Cưỡng Chế Thâm Hụt)
+    cum_reward = getattr(state, "bandit_cumulative_reward", None)
+    if cum_reward is not None:
+        if cum_reward <= -1000.0:
+            lvl = max(lvl, 3)
+        elif cum_reward <= -700.0:
+            lvl = max(lvl, 2)
+        elif cum_reward <= -300.0:
+            lvl = max(lvl, 1)
+
+    return lvl
 
 
 def compute_stepwise_reward_and_next_level(
     highest_match: int,
     hit_jackpot_2: bool,
     current_level: int,
-    winless_golden_row_matches: Optional[List[int]] = None
+    winless_golden_row_matches: Optional[List[int]] = None,
+    cumulative_reward: Optional[float] = None
 ) -> Dict[str, Any]:
     """
     Compute Jackpot-Only reward/penalty and next escalation level using Stepwise Hysteresis:
@@ -94,9 +108,15 @@ def compute_stepwise_reward_and_next_level(
       * 2 matches: base -35.0 pts
       * 1 match:   base -75.0 pts
       * 0 matches: base -120.0 pts
-    - Minor/Secondary prizes (3, 4, 5 matches): Step DOWN -1 level (gradual cooldown), light penalty (-10, -5, -2).
+    - Secondary/Consolation prizes:
+      * 5 matches (Giải Nhất): Step DOWN -1 level, light penalty (-2.0 pts).
+      * 4 matches (Giải Nhì):  Step DOWN -1 level, light penalty (-5.0 pts).
+      * 3 matches (Giải Ba):   GIỮ NGUYÊN BẬC (Không lùi bậc!), giải khuyến khích 30k không hạ bậc phủ vé.
     - Jackpot 1 / Jackpot 2: Step DOWN -2 levels, massive positive reward (+10,000 / +5,000).
-    - NEW: False Jackpot Signal Penalty (Phạt Báo Hiệu Độc Đắc Thất Bại):
+    - Cumulative Deficit Floor (Sàn Bậc Thang Cưỡng Chế Thâm Hụt):
+      Khi điểm tích lũy tụt sâu (<= -300 -> Sàn Bậc 1; <= -700 -> Sàn Bậc 2; <= -1000 -> Sàn Bậc 3),
+      hệ thống bắt buộc phải duy trì độ phủ vé tối đa, không để AI rơi vào bẫy co cụm Bậc 0.
+    - False Jackpot Signal Penalty (Phạt Báo Hiệu Độc Đắc Thất Bại):
       If any row in the period was flagged with `is_golden_row = True` (8/8 Jackpot DNA Gates)
       but failed to win any prize (< 3 matches), apply an additional severe penalty per failed signal row:
       * 0 matches on 8/8 signal row: -150.0 * mult pts (+0.45 lr_multiplier)
@@ -135,9 +155,9 @@ def compute_stepwise_reward_and_next_level(
         policy_action = f"Trúng 4 số (Giải Nhì) • Phạt nhẹ -5đ & {step_direction}"
     elif highest_match == 3:
         cycle_reward = -10.0
-        next_level = max(0, curr_lvl - 1)
+        next_level = curr_lvl
         lr_multiplier = 1.00
-        step_direction = f"Lùi 1 bậc (Bậc {curr_lvl} → Bậc {next_level})"
+        step_direction = f"Giữ nguyên Bậc {curr_lvl}"
         policy_action = f"Trúng 3 số (Giải Ba) • Phạt nhẹ -10đ & {step_direction}"
     elif highest_match == 2:
         cycle_reward = round(-35.0 * mult, 1)
@@ -186,6 +206,23 @@ def compute_stepwise_reward_and_next_level(
             f" + ⚠️ PHẠT BÁO HIỆU ĐỘC ĐẮC SAI ({len(failed_signals)} dãy 8/8 cổng không trúng giải: "
             f"phạt thêm {false_signal_penalty}đ, tăng tốc học +{int(false_signal_lr_boost*100)}%)"
         )
+
+    # Apply Cumulative Deficit Floor (Sàn Bậc Thang Cưỡng Chế Thâm Hụt)
+    if cumulative_reward is not None:
+        projected_cum = cumulative_reward + cycle_reward
+        deficit_floor = 0
+        if projected_cum <= -1000.0:
+            deficit_floor = 3
+        elif projected_cum <= -700.0:
+            deficit_floor = 2
+        elif projected_cum <= -300.0:
+            deficit_floor = 1
+
+        # Only true major wins (5 matches or Jackpot) can de-escalate below the deficit floor
+        if highest_match < 5 and not hit_jackpot_2 and next_level < deficit_floor:
+            next_level = deficit_floor
+            step_direction = f"Cưỡng chế Sàn Bậc {next_level} (Thâm hụt luỹ kế sâu {projected_cum:.1f}đ)"
+            policy_action += f" • [SÀN CƯỠNG CHẾ BẬC {next_level}]"
 
     next_info = ESCALATION_LADDER[next_level]
     return {
@@ -338,7 +375,8 @@ async def recalibrate_hybrid_learning(
         highest_match=highest_match,
         hit_jackpot_2=hit_jackpot_2,
         current_level=current_level,
-        winless_golden_row_matches=winless_golden_row_matches
+        winless_golden_row_matches=winless_golden_row_matches,
+        cumulative_reward=state.bandit_cumulative_reward
     )
 
     cycle_reward = step_outcome["cycle_reward"]

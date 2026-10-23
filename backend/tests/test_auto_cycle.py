@@ -83,11 +83,11 @@ def test_stepwise_escalation_and_deescalation_ladder():
     assert r3["next_level"] == 3
     assert r3["target_ticket_count"] == 4
 
-    # 5. At Level 3, hit 3 numbers (Third Prize) -> NO hard reset to 0! Only step down -1 to Level 2 (3 tickets)
+    # 5. At Level 3, hit 3 numbers (Third Prize) -> Giữ nguyên Bậc 3 (Không de-escalate do giải ba 30k)
     r4 = compute_stepwise_reward_and_next_level(highest_match=3, hit_jackpot_2=False, current_level=3)
     assert r4["cycle_reward"] == -10.0
-    assert r4["next_level"] == 2
-    assert r4["target_ticket_count"] == 3
+    assert r4["next_level"] == 3
+    assert r4["target_ticket_count"] == 4
 
     # 6. At Level 2, hit 4 numbers (Second Prize) -> Step down -1 to Level 1 (2 tickets)
     r5 = compute_stepwise_reward_and_next_level(highest_match=4, hit_jackpot_2=False, current_level=2)
@@ -124,5 +124,47 @@ def test_stepwise_escalation_and_deescalation_ladder():
     )
     assert r8["false_signal_penalty"] == -99.0
     assert r8["cycle_reward"] == -109.0
-    assert r8["next_level"] == 2  # Blocked from stepping down to Level 1!
+    assert r8["next_level"] == 2  # Blocked from stepping down!
+
+    # 10. Cumulative Deficit Floor (Sàn Bậc Thang Cưỡng Chế Thâm Hụt)
+    # When cumulative reward drops deeply (e.g. -1047 pts), AI must be elevated to Level 3 even if starting at Level 0
+    r9 = compute_stepwise_reward_and_next_level(
+        highest_match=3,
+        hit_jackpot_2=False,
+        current_level=0,
+        cumulative_reward=-1047.0
+    )
+    assert r9["next_level"] == 3
+    assert r9["target_ticket_count"] == 4
+    assert "[SÀN CƯỠNG CHẾ BẬC 3]" in r9["policy_action"]
+
+    # Deficit <= -700 pts enforces minimum Level 2
+    r10 = compute_stepwise_reward_and_next_level(
+        highest_match=3,
+        hit_jackpot_2=False,
+        current_level=0,
+        cumulative_reward=-750.0
+    )
+    assert r10["next_level"] == 2
+    assert r10["target_ticket_count"] == 3
+
+    # Deficit <= -300 pts enforces minimum Level 1
+    r11 = compute_stepwise_reward_and_next_level(
+        highest_match=3,
+        hit_jackpot_2=False,
+        current_level=0,
+        cumulative_reward=-350.0
+    )
+    assert r11["next_level"] == 1
+    assert r11["target_ticket_count"] == 2
+
+    # 11. Verify get_current_escalation_level with deep negative cumulative reward
+    from app.models.learning import AILearningState
+    from app.analytics.hybrid_learning import get_current_escalation_level
+    deep_state = AILearningState(
+        game_code="mega_6_45",
+        bandit_cumulative_reward=-2531.2,
+        learning_logs=[{"escalation_level": 0}]
+    )
+    assert get_current_escalation_level(deep_state) == 3
 
