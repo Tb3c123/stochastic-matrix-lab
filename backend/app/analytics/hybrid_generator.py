@@ -77,7 +77,7 @@ def generate_variant_ticket_rows(
     variant_index: int,
     excluded_rows: List[List[int]],
     usage_map: Dict[int, int],
-    iterations: int = 85,
+    iterations: int = 135,
 ) -> Tuple[List[List[int]], List[str], Dict[int, float]]:
     """Generate 5 rows optimized toward 8/8 Jackpot DNA Gates while avoiding duplicates."""
     number_scores = score_numbers_for_variant(max_num, state, freq_map, late_map, variant_index, usage_map)

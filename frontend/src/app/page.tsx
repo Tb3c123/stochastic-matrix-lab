@@ -5,6 +5,7 @@ import { API_BASE_URL } from "@/config/api";
 import { Header } from "@/components/Header";
 import { LatestDrawBanner } from "@/components/LatestDrawBanner";
 import { NextDrawCountdown } from "@/components/NextDrawCountdown";
+import { GoldenSignalHeroBanner } from "@/components/GoldenSignalHeroBanner";
 import { SmartPickGenerator } from "@/components/SmartPickGenerator";
 import { HybridLearningDashboard } from "@/components/HybridLearningDashboard";
 import { SavedTicketsTracker } from "@/components/SavedTicketsTracker";
@@ -73,6 +74,11 @@ export default function HomePage() {
           <NextDrawCountdown
             gameCode={selectedGame}
             currentDrawPeriod={latestDraw?.draw_period}
+          />
+          <GoldenSignalHeroBanner
+            gameCode={selectedGame}
+            refreshTrigger={ticketsRefreshTrigger}
+            onOpenAiTab={() => setActiveTab("ai_learning")}
           />
         </div>
 

@@ -73,7 +73,11 @@ export const AiTicketRowItem: React.FC<AiTicketRowItemProps> = ({
           {row.map((num) => (
             <span
               key={num}
-              className="w-9 h-9 rounded-full ball-red text-white font-bold text-sm flex items-center justify-center shadow-md"
+              className={`w-10 h-10 rounded-full font-extrabold text-sm flex items-center justify-center shadow-md ${
+                isGoldenRow
+                  ? "bg-gradient-to-br from-amber-300 via-amber-400 to-amber-600 text-slate-950 font-black ring-2 ring-amber-200/70 shadow-amber-500/30"
+                  : "ball-red text-white"
+              }`}
             >
               {num < 10 ? `0${num}` : num}
             </span>

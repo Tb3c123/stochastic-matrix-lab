@@ -77,12 +77,13 @@ async def recalibrate_hybrid_learning(
         winless_golden_row_matches=winless_golden, cumulative_reward=state.bandit_cumulative_reward,
     )
     lr = step["lr_multiplier"]
-    d_hot = (hot_matches - 2.0) * 0.03 * lr
-    d_late = (late_matches - 2.0) * 0.04 * lr
+    expected_top10 = round((6.0 * 10.0) / max_num, 2)
+    d_hot = (hot_matches - expected_top10) * 0.03 * lr
+    d_late = (late_matches - expected_top10) * 0.04 * lr
     if failed_nums:
         missed = set(failed_nums) - winning_nums
-        d_hot -= len(missed.intersection(hot_top10)) * 0.015
-        d_late -= len(missed.intersection(late_top10)) * 0.015
+        d_hot -= len(missed.intersection(hot_top10)) * 0.01
+        d_late -= len(missed.intersection(late_top10)) * 0.01
 
     nw_hot = max(0.10, min(0.55, state.w_hot + d_hot))
     nw_late = max(0.15, min(0.60, state.w_lateness + d_late))
