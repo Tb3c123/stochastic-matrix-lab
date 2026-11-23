@@ -1,0 +1,67 @@
+name: stochastic-matrix-lab
+
+services:
+  backend:
+    image: stochastic-matrix-lab-backend:latest
+    container_name: vietlot-backend
+    restart: unless-stopped
+    ports:
+      - target: 8000
+        published: "8088"
+        protocol: tcp
+    environment:
+      DATABASE_URL: sqlite+aiosqlite:///./data/vietlot.db
+      API_V1_STR: /api/v1
+      CORS_ORIGINS: "*"
+    labels:
+      icon: https://cdn.jsdelivr.net/gh/IceWhaleTech/CasaOS-AppStore@main/Apps/Grafana/icon.png
+    volumes:
+      - type: volume
+        source: backend_data
+        target: /app/data
+    networks:
+      - vietlot-net
+
+  frontend:
+    image: stochastic-matrix-lab-frontend:latest
+    container_name: vietlot-frontend
+    restart: unless-stopped
+    ports:
+      - target: 3000
+        published: "3080"
+        protocol: tcp
+    environment:
+      NEXT_PUBLIC_API_URL: ""
+    labels:
+      icon: https://cdn.jsdelivr.net/gh/IceWhaleTech/CasaOS-AppStore@main/Apps/Grafana/icon.png
+    depends_on:
+      - backend
+    networks:
+      - vietlot-net
+
+networks:
+  vietlot-net:
+    driver: bridge
+
+volumes:
+  backend_data:
+
+x-casaos:
+  architectures:
+    - amd64
+    - arm64
+  author: Tb3c123
+  category: Utilities
+  description:
+    en_us: Vietlott Analytics, 8/8 Jackpot DNA & UCB1 Bandit AI Platform
+  hostname: ""
+  icon: https://cdn.jsdelivr.net/gh/IceWhaleTech/CasaOS-AppStore@main/Apps/Grafana/icon.png
+  index: /
+  is_uncontrolled: false
+  main: frontend
+  port_map: "3080"
+  scheme: http
+  store_app_id: stochastic-matrix-lab
+  title:
+    en_us: Stochastic Matrix Lab
+    custom: Stochastic Matrix Lab
