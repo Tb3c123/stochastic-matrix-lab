@@ -1,4 +1,5 @@
 import asyncio
+import logging
 from contextlib import asynccontextmanager
 from datetime import datetime
 from fastapi import FastAPI
@@ -10,6 +11,8 @@ from app.database import init_db
 from app.schemas.common import ResponseEnvelope
 from app.routers import games, draws, analytics, generator, tickets, auto_cycle
 from app.services.scheduler import auto_cycle_worker
+
+logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -42,7 +45,7 @@ async def lifespan(app: FastAPI):
             if (ticket_cnt_res.scalar() or 0) == 0:
                 await run_walk_forward_simulation(session, days_back=50, reset_existing=False)
     except Exception:
-        pass
+        logger.exception("Startup auto-seed failed; continuing with existing DB state")
 
     # Start automated 10:00 AM daily continuous learning scheduler
     worker_task = asyncio.create_task(auto_cycle_worker())
@@ -63,10 +66,11 @@ app = FastAPI(
 )
 
 # Enable CORS for Next.js frontend (Vercel & local clients)
+cors_origins = [o.strip() for o in settings.CORS_ORIGINS.split(",") if o.strip()] or ["*"]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
+    allow_origins=cors_origins,
+    allow_credentials=(cors_origins != ["*"]),
     allow_methods=["*"],
     allow_headers=["*"],
 )

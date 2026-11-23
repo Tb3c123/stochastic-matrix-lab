@@ -14,7 +14,7 @@ class CrawlerManager:
     def __init__(self, session: AsyncSession):
         self.session = session
 
-    async def save_draw(self, game_code: str, draw_data: Dict[str, Any]) -> bool:
+    async def save_draw(self, game_code: str, draw_data: Dict[str, Any], commit: bool = True) -> bool:
         """Upsert draw result. Return True if newly created, False if already exists."""
         game_res = await self.session.execute(select(LotteryGame).where(LotteryGame.code == game_code))
         game = game_res.scalar_one_or_none()
@@ -33,7 +33,8 @@ class CrawlerManager:
             # Optionally update jackpot if previously 0
             if existing.jackpot_1_amount == 0.0 and draw_data.get("jackpot_1_amount", 0.0) > 0:
                 existing.jackpot_1_amount = draw_data["jackpot_1_amount"]
-                await self.session.commit()
+                if commit:
+                    await self.session.commit()
             return False
 
         new_draw = DrawResult(
@@ -47,7 +48,8 @@ class CrawlerManager:
             jackpot_1_winners=draw_data.get("jackpot_1_winners", 0)
         )
         self.session.add(new_draw)
-        await self.session.commit()
+        if commit:
+            await self.session.commit()
         return True
 
     async def sync_latest_draw(self, game_code: str) -> Optional[Dict[str, Any]]:
@@ -81,9 +83,10 @@ class CrawlerManager:
         # take the most recent `limit` draws
         target_draws = history[-limit:] if limit > 0 else history
         for d in target_draws:
-            created = await self.save_draw(game_code, d)
+            created = await self.save_draw(game_code, d, commit=False)
             if created:
                 inserted_count += 1
+        await self.session.commit()
         return inserted_count
 
     async def sync_recent_draws(self, game_code: str, limit: int = 20) -> List[Dict[str, Any]]:
@@ -94,9 +97,10 @@ class CrawlerManager:
             if history:
                 target_draws = history[-limit:] if limit > 0 else history
                 for d in target_draws:
-                    created = await self.save_draw(game_code, d)
+                    created = await self.save_draw(game_code, d, commit=False)
                     if created:
                         newly_inserted.append(d)
+                await self.session.commit()
         except Exception as e:
             logger.error(f"Error in sync_recent_draws fallback for {game_code}: {e}")
 

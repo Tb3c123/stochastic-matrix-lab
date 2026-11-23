@@ -1,0 +1,13 @@
+project:
+  id: stochastic-matrix-lab
+  name: "stochastic-matrix-lab"
+  kanboard_project_id: 3
+  shared_rules: "/mnt/disk1/Workspace/shared/templates/DEV_TEAM_RULES.md"
+  constraints:
+    max_lines_per_file: 150
+    max_retry_loops: 2
+memory:
+  user_profile: "/mnt/disk1/Workspace/shared/memory/USER.md"
+  project_memory: "./memory/MEMORY.md"
+skills:
+  shared_dev_skills: "/mnt/disk1/Workspace/shared/skills/dept-dev"

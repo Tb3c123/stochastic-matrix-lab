@@ -8,5 +8,6 @@ class Settings(BaseSettings):
     DATABASE_URL: str = "sqlite+aiosqlite:///./vietlot.db"
     VIETLOTT_BASE_URL: str = "https://vietlott.vn"
     GITHUB_DATA_FALLBACK_URL: str = "https://raw.githubusercontent.com/vietvudanh/vietlott-data/main/data"
+    CORS_ORIGINS: str = "*"
 
 settings = Settings()

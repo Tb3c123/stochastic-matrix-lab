@@ -1,15 +1,19 @@
+name: stochastic-matrix-lab
+
 services:
   backend:
     build:
       context: ./backend
       dockerfile: Dockerfile
+    image: stochastic-matrix-lab-backend:latest
     container_name: vietlot-backend
     restart: unless-stopped
     ports:
-      - "8000:8000"
+      - "8088:8000"
     environment:
       - DATABASE_URL=sqlite+aiosqlite:///./data/vietlot.db
       - API_V1_STR=/api/v1
+      - CORS_ORIGINS=*
     volumes:
       - backend_data:/app/data
     healthcheck:
@@ -17,24 +21,45 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
     networks:
       - vietlot-net
+    x-casaos:
+      ports:
+        - container: "8000"
+          description:
+            en_us: "FastAPI Backend & OpenAPI Docs"
 
   frontend:
     build:
       context: ./frontend
       dockerfile: Dockerfile
+    image: stochastic-matrix-lab-frontend:latest
     container_name: vietlot-frontend
     restart: unless-stopped
     ports:
-      - "3000:3000"
+      - "3080:3000"
     environment:
-      - NEXT_PUBLIC_API_URL=http://backend:8000
+      - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-}
     depends_on:
       backend:
         condition: service_healthy
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
     networks:
       - vietlot-net
+    x-casaos:
+      ports:
+        - container: "3000"
+          description:
+            en_us: "Stochastic Matrix Lab Web UI"
 
 networks:
   vietlot-net:
@@ -43,3 +68,18 @@ networks:
 volumes:
   backend_data:
     driver: local
+
+x-casaos:
+  architectures:
+    - amd64
+    - arm64
+  main: frontend
+  author: Tb3c123
+  category: Utilities
+  title:
+    en_us: "Stochastic Matrix Lab"
+  tagline:
+    en_us: "Vietlott Analytics, 8/8 Jackpot DNA & UCB1 Bandit AI"
+  port_map: "3080"
+  scheme: http
+  index: /
