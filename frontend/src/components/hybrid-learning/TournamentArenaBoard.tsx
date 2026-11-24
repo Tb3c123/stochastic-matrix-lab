@@ -38,8 +38,15 @@ export const TournamentArenaBoard: React.FC<{
           </h4>
         </div>
         <div className="text-xs text-slate-300 bg-slate-900/90 border border-slate-700/80 rounded-xl px-3.5 py-2 font-mono">
-          Tốc độ: <b className="text-emerald-400">{evo.epochs_per_sec || 1} đời/s</b> • Kỷ lục Vua:{" "}
-          <b className="text-amber-300">v{evo.champion_version || 1}</b>
+          Nhịp máy:{" "}
+          <b className="text-emerald-400">
+            {evo.mode === "night_boost" || evo.mode === "night_cooldown"
+              ? "🌙 Bung Đêm 00:30–07:00 (Nhường qBittorrent)"
+              : evo.mode === "day_idle"
+                ? "💤 Ngủ Đông 0% CPU (Đợi 00:30 / Kỳ mới)"
+                : "🍃 Eco Ban Ngày (<1% CPU)"}
+          </b>{" "}
+          • Vua: <b className="text-amber-300">v{evo.champion_version || 1}</b>
         </div>
       </div>
 

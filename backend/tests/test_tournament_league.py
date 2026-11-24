@@ -8,7 +8,7 @@ from app.database import init_db
 from app.analytics.evo_engine import precompute_window_tensors, mutate_genome, evaluate_genome_fast
 from app.analytics.tournament_league import seed_initial_population, run_tournament_generation
 from app.services.alpha_ticket_builder import is_upcoming_draw_locked
-from app.services.hunt_jackpot_champion import hunt_for_game
+from app.services.hunt_jackpot_champion import hunt_for_game, is_night_boost_window, compute_thermal_pacing
 
 VN_TZ = timezone(timedelta(hours=7))
 
@@ -54,6 +54,18 @@ def test_draw_freeze_lock_window():
     assert is_upcoming_draw_locked("mega_6_45", wed_1750) is True
     assert is_upcoming_draw_locked("mega_6_45", wed_1600) is False
     assert is_upcoming_draw_locked("power_6_55", wed_1750) is False
+
+    t_0025 = datetime(2026, 11, 25, 0, 25, tzinfo=VN_TZ)
+    t_0030 = datetime(2026, 11, 25, 0, 30, tzinfo=VN_TZ)
+    t_0659 = datetime(2026, 11, 25, 6, 59, tzinfo=VN_TZ)
+    t_0700 = datetime(2026, 11, 25, 7, 0, tzinfo=VN_TZ)
+    assert is_night_boost_window(t_0025) is False
+    assert is_night_boost_window(t_0030) is True
+    assert is_night_boost_window(t_0659) is True
+    assert is_night_boost_window(t_0700) is False
+    assert compute_thermal_pacing(3, 10, 120.0, t_0030) == ("night_boost", 0.24)
+    assert compute_thermal_pacing(3, 10, 120.0, t_0700) == ("day_eco", 2.2)
+    assert compute_thermal_pacing(3, 600, 120.0, t_0700) == ("day_idle", 45.0)
 
 
 @pytest.mark.asyncio

@@ -5,6 +5,7 @@ services:
     image: stochastic-matrix-lab-backend:latest
     container_name: vietlot-backend
     restart: unless-stopped
+    cpus: 0.35
     ports:
       - target: 8000
         published: "8088"

@@ -59,13 +59,22 @@ def make_specialist_head(base: Dict[str, Any], max_num: int, rng: Optional[rando
 def rank_balls_for_head(head: Dict[str, Any], step: Dict[str, Any], max_num: int) -> List[int]:
     wh, wf, wl = float(head.get("wh", 0.25)), float(head.get("wf", 0.18)), float(head.get("wl", 0.32))
     wm, wpr = float(head.get("wm", 0.24)), float(head.get("wpr", 0.16))
+    rcache = step.setdefault("_rank_cache", {})
+    wkey = (wh, wf, wl, wm, wpr)
+    cached = rcache.get(wkey)
+    if cached is not None:
+        return cached
     ew, ef = step["ewma"], step.get("ewma_fast", step["ewma"])
     hz, mk, pr = step["hazard"], step["markov"], step.get("pair", step["ewma"])
-    return sorted(
+    ranked = sorted(
         range(1, max_num + 1),
         key=lambda n: (wh * ew[n] + wf * ef[n] + wl * hz[n] + wm * mk[n] + wpr * pr[n], -n),
         reverse=True,
     )
+    if len(rcache) >= 96:
+        rcache.clear()
+    rcache[wkey] = ranked
+    return ranked
 
 
 def build_deterministic_rows(

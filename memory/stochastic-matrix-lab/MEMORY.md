@@ -7,3 +7,4 @@
 - [2026-11-23] Deploy CasaOS dùng cổng 3080:3000 (vietlot-frontend) và 8088:8000 (vietlot-backend) vì 3000 bị adguard-home và 8000 bị portainer chiếm; frontend/src/config/api.ts tự suy ra hostname:8088 khi truy cập qua LAN.
 - [2026-11-24] In auto_cycle.py, always order SavedTicket with pending status first before id DESC so batch-inserted historical evaluated tickets never shadow upcoming pending Golden Signal tickets.
 - [2026-11-24] Offload CPU-bound tournament generations via asyncio.to_thread, cache read endpoints in RAM, and skip per-row audit recomputation on evaluated historical tickets (shrinking /tickets from 5MB/2.5s to <60KB/<3ms).
+- [2026-11-24] Enforce VN-time thermal schedule on Morefine N6: Night Boost only 00:30-07:00 capped <=0.35 vCPU (~6-8% host CPU, 0 disk I/O) to protect qBittorrent; Daytime 07:00-00:30 runs Ultra-Eco (<1% CPU) and auto-hibernates at 0% CPU on stagnation.
