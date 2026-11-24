@@ -31,7 +31,7 @@ def build_listed_tickets(tickets: List[SavedTicket]) -> List[Dict[str, Any]]:
                 "golden_rows_count": 0, "golden_rows": [], "max_gates_passed": 7, "total_jackpot_gates": 8,
                 "best_row_index": 0, "best_row_label": "Dãy A", "best_row_score": 86.0,
             }
-            pa = {"strategy_info": pa.get("strategy_info"), "ticket_variant": pa.get("ticket_variant"), "strategy_name_override": pa.get("strategy_name_override")}
+            pa = {"strategy_info": pa.get("strategy_info"), "ticket_variant": pa.get("ticket_variant"), "strategy_name_override": pa.get("strategy_name_override"), "ticket_origin": pa.get("ticket_origin", "simulated_backtest")}
 
         mr_slim = {k: v for k, v in (t.matched_results or {}).items() if k != "row_evaluations"} if t.matched_results else None
         data.append({
@@ -80,13 +80,19 @@ def build_algorithms_performance(tickets: List[SavedTicket]) -> List[Dict[str, A
 def build_winning_history(evaluated_tickets: List[SavedTicket], prize_tier: Optional[str]) -> Dict[str, Any]:
     row_cost = 10_000
     only_6 = prize_tier == "jackpot_6"
-    tot_eval, tot_rows, tot_spent, tot_win, tot_prize = len(evaluated_tickets), 0, 0, 0, 0
+    only_live = prize_tier == "live_real_time"
+    tot_eval, tot_rows, tot_spent, tot_win, tot_prize = 0, 0, 0, 0, 0
     hi_amt, hi_name = 0, "Chưa có"
     tiers = {"jackpot_1": 0, "jackpot_2": 0, "first": 0, "second": 0, "third": 0}
     eval_periods, win_periods = set(), set()
     win_data: List[Dict[str, Any]] = []
 
     for t in evaluated_tickets:
+        pa = t.predicted_analysis or {}
+        origin = pa.get("ticket_origin", "simulated_backtest")
+        if only_live and origin != "live_real_time":
+            continue
+        tot_eval += 1
         eval_periods.add(t.target_draw_period)
         r_cnt = len(t.rows_data) if t.rows_data else 5
         cost = r_cnt * row_cost
@@ -103,7 +109,7 @@ def build_winning_history(evaluated_tickets: List[SavedTicket], prize_tier: Opti
                     break
 
         win_rows = [r for r in raw_wins if r.get("match_count") == 6] if only_6 else raw_wins
-        if prize_tier and not only_6:
+        if prize_tier and not only_6 and not only_live:
             needle = {"jackpot": "jackpot", "first": "nhất", "second": "nhì", "third": "ba"}.get(prize_tier, "")
             win_rows = [wr for wr in win_rows if needle and needle in wr.get("prize_name", "").lower()]
         if not win_rows:
@@ -117,12 +123,11 @@ def build_winning_history(evaluated_tickets: List[SavedTicket], prize_tier: Opti
             if r.get("prize_amount", 0) > hi_amt:
                 hi_amt, hi_name = r["prize_amount"], f"{r.get('prize_name', '')} ({r['prize_amount']:,.0f} đ)"
 
-        pa = t.predicted_analysis or {}
         meta = STRATEGY_METRICS.get(t.strategy, STRATEGY_METRICS["balanced"])
         s_label = pa.get("strategy_name_override") or (pa.get("strategy_info") or {}).get("strategy_name") or meta["name"]
         win_data.append({
             "id": t.id, "game_code": t.game_code, "strategy": t.strategy, "strategy_name": s_label,
-            "target_draw_period": t.target_draw_period, "target_draw_date": t.target_draw_date,
+            "ticket_origin": origin, "target_draw_period": t.target_draw_period, "target_draw_date": t.target_draw_date,
             "created_at": t.created_at.isoformat(), "ticket_cost_vnd": cost, "row_cost_vnd": row_cost,
             "total_prize_vnd": prize, "net_profit_vnd": prize - cost, "best_match_count": max((r.get("match_count", 0) for r in win_rows), default=0),
             "actual_winning_numbers": mr.get("actual_winning_numbers") or mr.get("winning_numbers") or [],

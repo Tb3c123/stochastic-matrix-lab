@@ -49,6 +49,7 @@ export default function HomePage() {
         {activeTab === "tickets_hub" && (
           <UnifiedTicketsHub
             gameCode={selectedGame}
+            latestDraw={latestDraw}
             refreshTrigger={ticketsRefreshTrigger}
           />
         )}

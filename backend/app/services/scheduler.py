@@ -10,6 +10,8 @@ from app.models.draw import DrawResult
 from app.crawler.manager import CrawlerManager
 from app.analytics.hybrid_learning import execute_auto_cycle_pipeline
 from app.services.hunt_jackpot_champion import run_autonomous_hunter_daemon
+from app.services.live_arena_scorer import score_squad_on_official_draw
+from app.services.api_cache import invalidate_game_cache
 from app.routers.tickets import evaluate_pending_tickets_core
 
 logger = logging.getLogger("AutoCycleScheduler")
@@ -66,7 +68,9 @@ async def auto_cycle_worker():
                                         
                                         # Auto evaluate pending tickets & re-trigger background Jackpot Hunter
                                         eval_res = await evaluate_pending_tickets_core(session, g_code)
-                                        logger.info(f"[18:35 Draw Sync] Auto-evaluation for {g_code}: {eval_res.get('message')}")
+                                        live_sc = score_squad_on_official_draw(g_code, latest.draw_period, latest.winning_numbers)
+                                        invalidate_game_cache(g_code)
+                                        logger.info(f"[18:35 Draw Sync] Auto-eval {g_code}: {eval_res.get('message')} | Live winners={live_sc.get('winners')}")
                                         asyncio.create_task(run_autonomous_hunter_daemon(days_back=90, max_epochs=0))
                             except Exception as e:
                                 logger.error(f"[19:10 Draw Sync] Error checking/evaluating {g_code}: {e}")

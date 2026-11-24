@@ -9,3 +9,4 @@
 - [2026-11-24] Offload CPU-bound tournament generations via asyncio.to_thread, cache read endpoints in RAM, and skip per-row audit recomputation on evaluated historical tickets (shrinking /tickets from 5MB/2.5s to <60KB/<3ms).
 - [2026-11-24] Enforce VN-time thermal schedule on Morefine N6: Night Boost only 00:30-07:00 capped <=0.35 vCPU (~6-8% host CPU, 0 disk I/O) to protect qBittorrent; Daytime 07:00-00:30 runs Ultra-Eco (<1% CPU) and auto-hibernates at 0% CPU on stagnation.
 - [2026-11-24] Never reward total duplicate m6 row count in fitness (reward only distinct 6/6 draws) and enforce cross-row bitwise overlap <=3 in build_deterministic_rows plus <=2 on Hero Banner to prevent head cloning.
+- [2026-11-24] Enforce Elastic Population (12 daytime elites <-> 36 night gladiators), mandatory recent_6_draws >= 1 in the 10 latest draws, decaying x0.85 live_prestige from 18:35 real draws, and never delete ticket_origin=='live_real_time'.

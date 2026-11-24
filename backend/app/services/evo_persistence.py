@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 from sqlalchemy import select
 
 from app.database import AsyncSessionLocal
@@ -29,9 +29,12 @@ async def load_game_draws_and_seed(game_code: str):
 
 async def persist_alpha_record(
     game_code: str, gen: int, champ_bot: Dict[str, Any], top_bots: List[Dict[str, Any]],
+    full_population: Optional[List[Dict[str, Any]]] = None,
 ) -> Dict[str, Any]:
     ev, g = champ_bot["eval"], champ_bot["genome"]
     bh = ev["best_hit"]
+    rec_6 = ev.get("recent_6_draws", 0)
+    l_date = ev.get("latest_6_date") or bh.get("draw_date") or ""
     async with AsyncSessionLocal() as db:
         state = await get_or_create_learning_state(db, game_code)
         state.w_hot, state.w_lateness, state.w_gauss_sum, state.w_parity = g["w_hot"], g["w_lateness"], g["w_gauss_sum"], g["w_parity"]
@@ -39,15 +42,15 @@ async def persist_alpha_record(
         esc = get_current_escalation_level(state)
         log_item = {
             "timestamp": datetime.utcnow().isoformat(), "draw_period": bh.get("draw_period") or "EVO",
-            "draw_date": bh.get("draw_date") or datetime.utcnow().strftime("%Y-%m-%d"), "winning_numbers": bh.get("winning_numbers", []),
-            "policy_action": f"🏆 Thế hệ #{gen}: {champ_bot['bot_name']} khóa {ev['winning_draws']} kỳ ĐỘC ĐẮC 6/6",
+            "draw_date": l_date or datetime.utcnow().strftime("%Y-%m-%d"), "winning_numbers": bh.get("winning_numbers", []),
+            "policy_action": f"🏆 Đời #{gen}: Nổ {rec_6}/10 kỳ sát nhất (Tổng {ev['winning_draws']} kỳ 6/6 • Mới nhất {l_date})",
             "cycle_reward": ev["fitness"], "escalation_level": esc, "target_ticket_count": 4,
-            "feedback_summary": f"🎯 [KỶ LỤC 6/6 ĐỜI #{gen}]: Nổ {ev['winning_draws']}/{ev['draws_total']} kỳ Độc Đắc 6/6 ({ev['hit_frequency_pct']}%) • Tổng dãy 6/6: {ev['match_6']} • Bàn đạp 5/6: {ev['match_5']}.",
+            "feedback_summary": f"🔥 [ƯU TIÊN SÁT HIỆN TẠI ĐỜI #{gen}]: Khóa {rec_6}/10 kỳ gần nhất (Mới nhất: {l_date}) • Tổng {ev['winning_draws']}/{ev['draws_total']} kỳ 6/6.",
             "weights": {"lateness": state.w_lateness, "hot": state.w_hot, "gauss_sum": state.w_gauss_sum, "parity": state.w_parity}, "bandit_reward": state.bandit_cumulative_reward,
         }
         state.learning_logs = (list(state.learning_logs or []) + [log_item])[-20:]
         await db.commit()
         saved_hist = await persist_champion_history_tickets(db, game_code, gen, ev)
-        up_info = await upsert_alpha_upcoming_tickets(db, game_code, gen, top_bots, accuracy_pct=ev["hit_frequency_pct"])
+        up_info = await upsert_alpha_upcoming_tickets(db, game_code, gen, top_bots, accuracy_pct=ev["hit_frequency_pct"], full_population=full_population)
     invalidate_game_cache(game_code)
     return {"saved_history": saved_hist, **up_info}

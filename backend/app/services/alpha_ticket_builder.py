@@ -11,6 +11,7 @@ from app.analytics.dna_gates import score_candidate_dna
 from app.analytics.evo_wheel import nums_to_mask, rank_balls_for_head
 from app.analytics.evo_engine import build_feature_step, build_deterministic_rows, mask_to_nums
 from app.analytics.hybrid_policy import TICKET_VARIANT_PROFILES
+from app.services.live_arena_scorer import snapshot_squad_for_upcoming_draw
 
 VN_TZ = timezone(timedelta(hours=7))
 
@@ -57,7 +58,8 @@ def _polish_upcoming_row_dna(
 
 
 async def upsert_alpha_upcoming_tickets(
-    db: AsyncSession, game_code: str, generation: int, top_bots: List[Dict[str, Any]], accuracy_pct: float = 0.0,
+    db: AsyncSession, game_code: str, generation: int, top_bots: List[Dict[str, Any]],
+    accuracy_pct: float = 0.0, full_population: Optional[List[Dict[str, Any]]] = None,
 ) -> Dict[str, Any]:
     from app.routers.tickets import compute_next_draw_date, compute_single_row_jackpot_forecast, compute_ticket_beauty_evaluation
 
@@ -88,8 +90,10 @@ async def upsert_alpha_upcoming_tickets(
     is_power = game_code == "power_6_55"
     hist = [{"winning_numbers": d.winning_numbers, "special_number": d.special_number} for d in draws[-50:]]
     step = build_feature_step(hist, game.max_number, is_power=is_power)
+    snapshot_squad_for_upcoming_draw(game_code, target_period, full_population or top_bots, step, game.max_number, is_power)
     champ = top_bots[0]
     win_6_cnt = champ["eval"]["winning_draws"]
+    rec_6_cnt = champ["eval"].get("recent_6_draws", 0)
     raw_masks, all_sps = build_deterministic_rows(champ["genome"], step, game.max_number, is_power=is_power, rows_per_draw=20)
     heads = champ["genome"].get("heads") or [champ["genome"]] * 4
     polished_masks: List[int] = []
@@ -109,14 +113,15 @@ async def upsert_alpha_upcoming_tickets(
             all_sps[v_idx * 5 + i] if (is_power and all_sps[v_idx * 5 + i] not in rows[i]) else (next((s for s in range(1, 56) if s not in rows[i]), 1) if is_power else None)
             for i in range(5)
         ]
-        v_title = f"🎯 Đầu Vé #{v_idx + 1} • {champ['bot_name']} ({win_6_cnt} kỳ 6/6)"
+        v_title = f"🎯 Đầu Vé #{v_idx + 1} • {champ['bot_name']} ({rec_6_cnt} kỳ gần • {win_6_cnt} kỳ 6/6)"
         row_fcs = [compute_single_row_jackpot_forecast(game_code, r, special_number=chunk_sp[i]) for i, r in enumerate(rows)]
         compute_ticket_beauty_evaluation(game_code, rows, row_fcs, "hybrid_ai_learned")
         vp = {**TICKET_VARIANT_PROFILES[v_idx], "variant_name": v_title}
         pa = {
-            "strategy_info": {"strategy_code": "hybrid_ai_learned", "strategy_name": f"🏆 Quán Quân 6/6 Đời #{generation} ({win_6_cnt} kỳ 6/6)", "category": "Đấu Trường Tuyệt Đối 6/6", "historical_accuracy_pct": max(accuracy_pct, champ["eval"]["hit_frequency_pct"]), "confidence_rating": "S++", "algorithm_score": 98.5},
+            "strategy_info": {"strategy_code": "hybrid_ai_learned", "strategy_name": f"🏆 Quán Quân 6/6 Đời #{generation} ({rec_6_cnt} kỳ gần)", "category": "Đấu Trường Tuyệt Đối 6/6", "historical_accuracy_pct": max(accuracy_pct, champ["eval"]["hit_frequency_pct"]), "confidence_rating": "S++", "algorithm_score": 98.5},
             "ticket_variant": vp, "escalation_level": 3, "batch_ticket_index": v_idx + 1, "batch_ticket_total": 4,
-            "row_forecasts": row_fcs, "valid_rows_count": 5, "auto_generated_by_ai": True, "champion_generation": generation,
+            "row_forecasts": row_fcs, "valid_rows_count": 5, "auto_generated_by_ai": True,
+            "ticket_origin": "live_real_time", "champion_generation": generation,
         }
         db.add(SavedTicket(game_code=game_code, strategy="hybrid_ai_learned", target_draw_period=target_period, target_draw_date=target_date, rows_data=rows, predicted_analysis=pa, status="pending"))
         created += 1
