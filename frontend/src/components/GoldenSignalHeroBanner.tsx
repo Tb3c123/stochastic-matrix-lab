@@ -2,39 +2,37 @@
 
 import React, { useState, useEffect } from "react";
 import { API_BASE_URL } from "@/config/api";
-import { Sparkles, Copy, Check, ArrowRight, ShieldCheck } from "lucide-react";
-
-interface GoldenSignalHeroBannerProps {
-  gameCode: string;
-  refreshTrigger?: number;
-  onOpenAiTab: () => void;
-}
+import { Sparkles, Copy, Check, ArrowRight, ShieldCheck, Cpu } from "lucide-react";
 
 const fmtBall = (n: number) => (n < 10 ? `0${n}` : `${n}`);
 
-export const GoldenSignalHeroBanner: React.FC<GoldenSignalHeroBannerProps> = ({
-  gameCode,
-  refreshTrigger = 0,
-  onOpenAiTab,
-}) => {
+export const GoldenSignalHeroBanner: React.FC<{
+  gameCode: string;
+  refreshTrigger?: number;
+  onOpenAiTab: () => void;
+}> = ({ gameCode, refreshTrigger = 0, onOpenAiTab }) => {
   const [statusData, setStatusData] = useState<any>(null);
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
 
   useEffect(() => {
     let mounted = true;
-    fetch(`${API_BASE_URL}/api/v1/auto-cycle/status?game_code=${gameCode}`)
-      .then((r) => r.json())
-      .then((json) => {
-        if (mounted && json.success && json.data) setStatusData(json.data);
-      })
-      .catch(() => {});
+    const load = () => {
+      fetch(`${API_BASE_URL}/api/v1/auto-cycle/status?game_code=${gameCode}`)
+        .then((r) => r.json())
+        .then((j) => mounted && j.success && j.data && setStatusData(j.data))
+        .catch(() => {});
+    };
+    load();
+    const timer = setInterval(load, 8000);
     return () => {
       mounted = false;
+      clearInterval(timer);
     };
   }, [gameCode, refreshTrigger]);
 
   if (!statusData) return null;
 
+  const evo = statusData.evo_hunter;
   const goldenRows: any[] = statusData.playable_golden_rows || [];
   const tickets: any[] = statusData.latest_ai_tickets || [];
   const topRows: any[] =
@@ -66,10 +64,7 @@ export const GoldenSignalHeroBanner: React.FC<GoldenSignalHeroBannerProps> = ({
 
   const handleCopyAll = () => {
     const allText = topRows
-      .map((r: any, i: number) => {
-        const ns = (r.numbers || []).map(fmtBall).join(" ");
-        return `#${i + 1} (${r.row_label}): ${ns}${r.special_number ? ` + ĐB:${fmtBall(r.special_number)}` : ""}`;
-      })
+      .map((r: any, i: number) => `#${i + 1} (${r.row_label}): ${(r.numbers || []).map(fmtBall).join(" ")}${r.special_number ? ` + ĐB:${fmtBall(r.special_number)}` : ""}`)
       .join("\n");
     copyText("ALL", allText);
   };
@@ -84,8 +79,16 @@ export const GoldenSignalHeroBanner: React.FC<GoldenSignalHeroBannerProps> = ({
               {isPerfect8 ? `THỜI ĐIỂM VÀNG • ${goldenRows.length} BỘ SỐ ĐẠT CHUẨN 8/8 CỔNG DNA` : "BỘ DÃY SỐ ĐẸP TIỀM NĂNG CAO KỲ TỚI"}
             </span>
             <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-500/15 text-emerald-300 border border-emerald-400/30">
-              Kỳ Mở Thưởng #{period} • {drawDate} (18:00)
+              Kỳ #{period} • {drawDate} (18:00)
             </span>
+            {evo && (
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold bg-violet-500/20 text-violet-200 border border-violet-400/40">
+                <Cpu className={`w-3.5 h-3.5 text-violet-300 ${evo.running ? "animate-spin" : ""}`} />
+                {evo.match_6 > 0
+                  ? `Đã chốt Độc Đắc 6/6 ở vòng #${evo.epochs_done?.toLocaleString()} (Đã tự nạp!)`
+                  : `Săn ngầm ${evo.days_back} ngày: Vòng #${evo.epochs_done?.toLocaleString()} (${evo.epochs_per_sec}/s) • Đỉnh: ${evo.best_hit?.match_count || 3}/6 số`}
+              </span>
+            )}
           </div>
           <h3 className="text-xl md:text-2xl font-extrabold text-white">
             Bộ Dãy Số Đẹp Khuyên Dùng Cho Kỳ Sắp Tới ({gameCode === "power_6_55" ? "Power 6/55" : "Mega 6/45"})
@@ -109,12 +112,9 @@ export const GoldenSignalHeroBanner: React.FC<GoldenSignalHeroBannerProps> = ({
           return (
             <div key={rowKey} className="rounded-2xl bg-slate-950/90 border border-amber-400/50 p-4 md:p-5 flex flex-col justify-between gap-3.5 shadow-lg">
               <div className="flex flex-wrap items-center justify-between gap-2">
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="px-2.5 py-1 rounded-lg bg-gradient-to-r from-amber-400 to-yellow-300 text-slate-950 font-black text-xs">
-                    🎯 BỘ #{idx + 1} • {gr.row_label} ({gr.jackpot_gates_passed ?? 8}/8 CỔNG DNA • {gr.row_beauty_score ?? 99.5}đ)
-                  </span>
-                  <span className="text-xs font-bold text-amber-300/90">{gr.variant_name}</span>
-                </div>
+                <span className="px-2.5 py-1 rounded-lg bg-gradient-to-r from-amber-400 to-yellow-300 text-slate-950 font-black text-xs">
+                  🎯 BỘ #{idx + 1} • {gr.row_label} ({gr.jackpot_gates_passed ?? 8}/8 CỔNG DNA • {gr.row_beauty_score ?? 99.5}đ)
+                </span>
                 <button onClick={() => copyText(rowKey, rowStr)} className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-[11px] font-bold text-slate-200 border border-slate-700 flex items-center gap-1 cursor-pointer">
                   {copiedKey === rowKey ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
                   {copiedKey === rowKey ? "Đã chép" : "Chép dãy"}
@@ -127,12 +127,9 @@ export const GoldenSignalHeroBanner: React.FC<GoldenSignalHeroBannerProps> = ({
                   </span>
                 ))}
                 {gr.special_number && (
-                  <>
-                    <span className="text-amber-400 font-black text-lg">+</span>
-                    <span className="w-11 h-11 md:w-12 md:h-12 rounded-full bg-emerald-400/20 border-2 border-emerald-400 text-emerald-300 font-black text-base md:text-lg flex items-center justify-center font-mono" title="Bóng Đặc Biệt Jackpot 2">
-                      {fmtBall(gr.special_number)}
-                    </span>
-                  </>
+                  <span className="w-11 h-11 md:w-12 md:h-12 rounded-full bg-emerald-400/20 border-2 border-emerald-400 text-emerald-300 font-black text-sm md:text-base flex items-center justify-center font-mono ml-1" title="Bóng Đặc Biệt Jackpot 2">
+                    +{fmtBall(gr.special_number)}
+                  </span>
                 )}
               </div>
               <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-800/90 text-[11px] text-slate-300 font-mono">

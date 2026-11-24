@@ -9,6 +9,7 @@ from app.models.game import LotteryGame
 from app.models.draw import DrawResult
 from app.crawler.manager import CrawlerManager
 from app.analytics.hybrid_learning import execute_auto_cycle_pipeline
+from app.services.hunt_jackpot_champion import run_autonomous_hunter_daemon
 from app.routers.tickets import evaluate_pending_tickets_core
 
 logger = logging.getLogger("AutoCycleScheduler")
@@ -63,9 +64,10 @@ async def auto_cycle_worker():
                                         _evening_synced_draws[sync_key] = True
                                         logger.info(f"[19:10 Draw Sync] Landed new official draw #{latest.draw_period} ({today_str}) for {g_code}!")
                                         
-                                        # Auto evaluate pending tickets
+                                        # Auto evaluate pending tickets & re-trigger background Jackpot Hunter
                                         eval_res = await evaluate_pending_tickets_core(session, g_code)
                                         logger.info(f"[19:10 Draw Sync] Auto-evaluation for {g_code}: {eval_res.get('message')}")
+                                        asyncio.create_task(run_autonomous_hunter_daemon(days_back=90, max_epochs=250000))
                             except Exception as e:
                                 logger.error(f"[19:10 Draw Sync] Error checking/evaluating {g_code}: {e}")
 

@@ -7,6 +7,7 @@ from app.database import get_db_session
 from app.models.ticket import SavedTicket
 from app.schemas.common import ResponseEnvelope, ErrorDetail
 from app.analytics.bandit import compute_ucb1_arm_scores
+from app.services.hunt_jackpot_champion import read_hunter_status
 from app.analytics.hybrid_learning import (
     get_or_create_learning_state, execute_auto_cycle_pipeline,
     get_current_escalation_level, ESCALATION_LADDER,
@@ -102,6 +103,7 @@ async def get_auto_cycle_status(game_code: str = Query("mega_6_45"), db: AsyncSe
         "total_cycles_learned": state.total_cycles_learned, "recent_accuracy_rate": state.recent_accuracy_rate,
         "bandit_cumulative_reward": state.bandit_cumulative_reward,
         "ucb1_arm_scores": compute_ucb1_arm_scores(state.learning_logs),
+        "evo_hunter": read_hunter_status().get(game_code),
         "escalation_level": current_level, "escalation_info": escalation_info,
         "escalation_ladder": list(ESCALATION_LADDER.values()),
         "weights": {"w_lateness": state.w_lateness, "w_gauss_sum": state.w_gauss_sum, "w_hot": state.w_hot, "w_parity": state.w_parity},

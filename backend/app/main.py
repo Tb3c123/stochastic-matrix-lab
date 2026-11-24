@@ -11,6 +11,7 @@ from app.database import init_db
 from app.schemas.common import ResponseEnvelope
 from app.routers import games, draws, analytics, generator, tickets, auto_cycle
 from app.services.scheduler import auto_cycle_worker
+from app.services.hunt_jackpot_champion import run_autonomous_hunter_daemon
 
 logger = logging.getLogger(__name__)
 
@@ -47,14 +48,16 @@ async def lifespan(app: FastAPI):
     except Exception:
         logger.exception("Startup auto-seed failed; continuing with existing DB state")
 
-    # Start automated 10:00 AM daily continuous learning scheduler
+    # Start automated 10:00 AM daily scheduler & autonomous background 90-day Jackpot Hunter
     worker_task = asyncio.create_task(auto_cycle_worker())
+    hunter_task = asyncio.create_task(run_autonomous_hunter_daemon(days_back=90, max_epochs=250000))
     yield
-    worker_task.cancel()
-    try:
-        await worker_task
-    except asyncio.CancelledError:
-        pass
+    for t in (worker_task, hunter_task):
+        t.cancel()
+        try:
+            await t
+        except asyncio.CancelledError:
+            pass
 
 app = FastAPI(
     title=settings.PROJECT_NAME,
