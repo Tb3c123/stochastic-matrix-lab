@@ -19,8 +19,8 @@ def compute_thermal_pacing(
 ) -> Tuple[str, float]:
     if is_night_boost_window(now_vn):
         return ("night_cooldown", 8.0) if stagnation >= 2500 else ("night_boost", 0.24)
-    if recent_6_draws == 0 and elapsed_sec < 40.0:
-        return "warmup", 0.12
+    if recent_6_draws == 0 and elapsed_sec < 180.0:
+        return "warmup", 0.05
     if stagnation >= 500:
         return "day_idle", 45.0
     return "day_eco", 2.2

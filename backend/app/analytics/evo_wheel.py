@@ -124,7 +124,7 @@ def build_deterministic_rows(
                 raw_m = 0
                 for pos in pat:
                     raw_m |= (1 << ranked[pos % max_num])
-                cm = _diversify_mask(raw_m, ranked, row_masks, h_idx * 5 + p_idx, max_ov=3)
+                cm = _diversify_mask(raw_m, ranked, row_masks, h_idx * 5 + p_idx, max_ov=4)
                 row_masks.append(cm)
                 r_idx = len(sp_picks)
                 sp_picks.append(next((s for s in sp_ranked[(r_idx % 8):] + sp_ranked if not ((cm >> s) & 1)), 1) if is_power else None)

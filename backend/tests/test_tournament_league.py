@@ -57,7 +57,7 @@ def test_draw_freeze_and_elastic_schedule():
     assert is_night_boost_window(t_0030) is True
     assert get_target_squad_size(t_0030) == 36
     assert get_target_squad_size(t_0700) == 12
-    assert compute_thermal_pacing(0, 5, 10.0, t_0700) == ("warmup", 0.12)
+    assert compute_thermal_pacing(0, 5, 10.0, t_0700) == ("warmup", 0.05)
     assert compute_thermal_pacing(2, 10, 120.0, t_0700) == ("day_eco", 2.2)
 
 
