@@ -77,7 +77,7 @@ def rank_balls_for_head(head: Dict[str, Any], step: Dict[str, Any], max_num: int
     return ranked
 
 
-def _diversify_mask(raw_mask: int, ranked: List[int], prev_masks: List[int], row_seed: int, max_ov: int = 3) -> int:
+def _diversify_mask(raw_mask: int, ranked: List[int], prev_masks: List[int], row_seed: int, max_ov: int = 5) -> int:
     if raw_mask.bit_count() == 6 and all((raw_mask & pm).bit_count() <= max_ov for pm in prev_masks):
         return raw_mask
     n_len = len(ranked)
@@ -124,7 +124,7 @@ def build_deterministic_rows(
                 raw_m = 0
                 for pos in pat:
                     raw_m |= (1 << ranked[pos % max_num])
-                cm = _diversify_mask(raw_m, ranked, row_masks, h_idx * 5 + p_idx, max_ov=4)
+                cm = _diversify_mask(raw_m, ranked, row_masks, h_idx * 5 + p_idx, max_ov=5)
                 row_masks.append(cm)
                 r_idx = len(sp_picks)
                 sp_picks.append(next((s for s in sp_ranked[(r_idx % 8):] + sp_ranked if not ((cm >> s) & 1)), 1) if is_power else None)

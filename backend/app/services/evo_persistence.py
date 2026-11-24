@@ -18,9 +18,9 @@ async def load_game_draws_and_seed(game_code: str):
         if not game:
             return None, [], {}
         draws = list((await db.execute(select(DrawResult).where(DrawResult.game_id == game.id).order_by(DrawResult.draw_period.asc()))).scalars().all())
-        if len(draws) < 140:
+        if len(draws) < 230:
             from app.crawler.manager import CrawlerManager
-            await CrawlerManager(db).seed_historical_data(game_code, limit=220)
+            await CrawlerManager(db).seed_historical_data(game_code, limit=300)
             draws = list((await db.execute(select(DrawResult).where(DrawResult.game_id == game.id).order_by(DrawResult.draw_period.asc()))).scalars().all())
         state = await get_or_create_learning_state(db, game_code)
         base_w = {"w_hot": state.w_hot, "w_lateness": state.w_lateness, "w_gauss_sum": state.w_gauss_sum, "w_parity": state.w_parity}

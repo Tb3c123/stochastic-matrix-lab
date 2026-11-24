@@ -38,11 +38,12 @@ export const UnifiedTicketsHub: React.FC<{
     return <div className="h-64 rounded-3xl bg-slate-900/80 border border-slate-800 animate-pulse" />;
   }
 
+  const horizonLabel = gameCode === "power_6_55" ? "12 Tháng" : "9 Tháng";
   const modeTabs = [
-    { id: "winning" as const, icon: Trophy, label: `Kỳ Độc Đắc 6/6`, activeCls: "bg-gradient-to-r from-amber-400 to-yellow-300 text-slate-950 font-black shadow-md" },
+    { id: "winning" as const, icon: Trophy, label: `Kỳ Độc Đắc 6/6 (${winningTickets.length})`, activeCls: "bg-gradient-to-r from-amber-400 to-yellow-300 text-slate-950 font-black shadow-md" },
     { id: "live" as const, icon: Zap, label: `Thắng Thời Gian Thật`, activeCls: "bg-violet-500 text-white font-black shadow-md" },
     { id: "pending" as const, icon: Clock, label: `Chờ Quay (${pendingTickets.length})`, activeCls: "bg-emerald-500 text-slate-950 font-black shadow-md" },
-    { id: "all" as const, icon: ListChecks, label: `Đủ ${evaluatedGroups.length} Kỳ (90 Ngày)`, activeCls: "bg-sky-500 text-slate-950 font-black shadow-md" },
+    { id: "all" as const, icon: ListChecks, label: `Đủ ${evaluatedGroups.length} Kỳ (${horizonLabel})`, activeCls: "bg-sky-500 text-slate-950 font-black shadow-md" },
   ];
 
   return (

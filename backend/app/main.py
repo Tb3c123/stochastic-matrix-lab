@@ -51,7 +51,7 @@ async def lifespan(app: FastAPI):
 
     # Start automated 10:00 AM daily scheduler & autonomous 24/7 Darwinian Frequency Tournament
     worker_task = asyncio.create_task(auto_cycle_worker())
-    hunter_task = asyncio.create_task(run_autonomous_hunter_daemon(days_back=90, max_epochs=0))
+    hunter_task = asyncio.create_task(run_autonomous_hunter_daemon(days_back=0, max_epochs=0))
     yield
     for t in (worker_task, hunter_task):
         t.cancel()

@@ -68,7 +68,7 @@ async def save_ticket(payload: SaveTicketRequest, db: AsyncSession = Depends(get
 @router.get("", response_model=ResponseEnvelope)
 async def list_tickets(
     game_code: Optional[str] = Query(None), strategy: Optional[str] = Query(None),
-    limit: int = Query(180, ge=1, le=500), db: AsyncSession = Depends(get_db_session),
+    limit: int = Query(700, ge=1, le=1000), db: AsyncSession = Depends(get_db_session),
 ):
     ckey = f"{game_code or 'all'}::{strategy or 'all'}::{limit}"
     cached = get_cached("tickets_list", ckey, ttl_sec=20.0)

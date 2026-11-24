@@ -13,7 +13,7 @@ from app.analytics.tournament_league import seed_initial_population, run_tournam
 from app.services.alpha_ticket_builder import is_upcoming_draw_locked
 from app.services.live_arena_scorer import snapshot_squad_for_upcoming_draw, score_squad_on_official_draw
 from app.services.hunt_jackpot_champion import (
-    hunt_for_game, is_night_boost_window, get_target_squad_size, compute_thermal_pacing,
+    hunt_for_game, is_night_boost_window, get_target_squad_size, compute_thermal_pacing, resolve_horizon_days,
 )
 
 VN_TZ = timezone(timedelta(hours=7))
@@ -57,8 +57,10 @@ def test_draw_freeze_and_elastic_schedule():
     assert is_night_boost_window(t_0030) is True
     assert get_target_squad_size(t_0030) == 36
     assert get_target_squad_size(t_0700) == 12
-    assert compute_thermal_pacing(0, 5, 10.0, t_0700) == ("warmup", 0.05)
-    assert compute_thermal_pacing(2, 10, 120.0, t_0700) == ("day_eco", 2.2)
+    assert resolve_horizon_days("mega_6_45", 0) == 270
+    assert resolve_horizon_days("power_6_55", 0) == 365
+    assert compute_thermal_pacing(0, 5, 10.0, t_0700, total_6_draws=1) == ("warmup", 0.04)
+    assert compute_thermal_pacing(2, 10, 120.0, t_0700, total_6_draws=5) == ("day_eco", 2.2)
 
 
 @pytest.mark.asyncio

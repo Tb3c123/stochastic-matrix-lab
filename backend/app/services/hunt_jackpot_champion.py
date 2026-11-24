@@ -11,7 +11,7 @@ from app.services.alpha_ticket_builder import is_upcoming_draw_locked
 from app.services.evo_persistence import load_game_draws_and_seed, persist_alpha_record
 from app.services.live_arena_scorer import get_prestige_map
 from app.services.thermal_pacing import (
-    is_night_boost_window, get_target_squad_size, compute_thermal_pacing,
+    resolve_horizon_days, is_night_boost_window, get_target_squad_size, compute_thermal_pacing,
 )
 
 STATUS_PATH = Path("/tmp/evo_hunter_status.json")
@@ -40,28 +40,30 @@ def _flush_status(persist_disk: bool = False) -> None:
 
 
 async def hunt_for_game(
-    game_code: str, days_back: int = 90, max_epochs: int = 0, sleep_sec: Optional[float] = None,
+    game_code: str, days_back: int = 0, max_epochs: int = 0, sleep_sec: Optional[float] = None,
 ) -> Dict[str, Any]:
+    eff_days = resolve_horizon_days(game_code, days_back)
     game, draws, base_w = await load_game_draws_and_seed(game_code)
     if not game:
         return {"ok": False, "error": "game_not_found"}
     is_power = game_code == "power_6_55"
-    tensors = await asyncio.to_thread(precompute_window_tensors, draws, game.max_number, days_back, is_power)
+    tensors = await asyncio.to_thread(precompute_window_tensors, draws, game.max_number, eff_days, is_power)
     if not tensors:
         return {"ok": False, "error": "insufficient_draws"}
 
     latest_period = draws[-1].draw_period
     prev_state = read_hunter_status().get(game_code) or {}
-    saved_g = prev_state.get("champion_weights") if (prev_state.get("latest_period") == latest_period and prev_state.get("recent_6_draws", 0) > 0) else None
+    saved_g = prev_state.get("champion_weights") if (prev_state.get("champion_weights") or {}).get("heads") else None
     population = seed_initial_population(saved_g or base_w, pop_size=get_target_squad_size(), max_num=game.max_number)
-    if saved_g and saved_g.get("heads") and population:
+    if saved_g and population:
         population[0]["genome"] = saved_g
 
     prestige_map = get_prestige_map(game_code)
     for b in population:
         b["live_prestige"] = prestige_map.get(b["bot_id"], 0.0)
 
-    best_m6_sig = (-1, -1.0, -1, -1.0)
+    best_sig = (-1.0, -1, -1)
+    min_total_gate = 3
     champ_version = int(prev_state.get("champion_version", 0))
     saved_hist_cnt = int(prev_state.get("saved_history_tickets", 0))
     stagnation = total_culled = gen = 0
@@ -73,12 +75,12 @@ async def hunt_for_game(
             _, fresh_draws, _ = await load_game_draws_and_seed(game_code)
             if fresh_draws and fresh_draws[-1].draw_period != latest_period:
                 latest_period = fresh_draws[-1].draw_period
-                tensors = await asyncio.to_thread(precompute_window_tensors, fresh_draws, game.max_number, days_back, is_power)
+                tensors = await asyncio.to_thread(precompute_window_tensors, fresh_draws, game.max_number, eff_days, is_power)
                 prestige_map = get_prestige_map(game_code)
                 for b in population:
                     b["eval"] = None
                     b["live_prestige"] = prestige_map.get(b["bot_id"], b.get("live_prestige", 0.0))
-                best_m6_sig, stagnation, t0 = (-1, -1.0, -1, -1.0), 0, time.monotonic()
+                best_sig, min_total_gate, stagnation, t0 = (-1.0, -1, -1), 3, 0, time.monotonic()
 
         gen += 1
         target_sz = get_target_squad_size() if infinite else len(population)
@@ -86,11 +88,14 @@ async def hunt_for_game(
         champ_bot = out["champion"]
         ev = champ_bot["eval"]
         total_culled += out["culled_count"]
-        cur_sig = (ev["recent_6_draws"], round(float(champ_bot.get("live_prestige", 0.0)), 1), ev["winning_draws"], ev["fitness"] if not infinite else 0.0)
-        qualifies = (not infinite and (gen == max_epochs or cur_sig > best_m6_sig)) or (infinite and ev["recent_6_draws"] >= 1 and cur_sig > best_m6_sig)
+        cur_sig = (ev["fitness"] + float(champ_bot.get("live_prestige", 0.0)), ev["winning_draws"], ev["recent_6_draws"])
+        qualifies = (not infinite and (gen == max_epochs or cur_sig > best_sig)) or (
+            infinite and ev["recent_6_draws"] >= 1 and ev["winning_draws"] >= min_total_gate and cur_sig > best_sig
+        )
 
         if qualifies:
-            best_m6_sig, stagnation = cur_sig, 0
+            best_sig, stagnation = cur_sig, 0
+            min_total_gate = max(min_total_gate, ev["winning_draws"])
             champ_version += 1
             top_valid = sorted([b for b in population if b.get("eval")], key=lambda x: x["eval"]["fitness"], reverse=True)[:3] or [champ_bot]
             p_res = await persist_alpha_record(game_code, gen, champ_bot, top_valid, full_population=out["next_population"])
@@ -100,14 +105,14 @@ async def hunt_for_game(
 
         population = out["next_population"]
         now = time.monotonic()
-        mode, auto_pause = compute_thermal_pacing(ev["recent_6_draws"], stagnation, now - t0)
+        mode, auto_pause = compute_thermal_pacing(ev["recent_6_draws"], stagnation, now - t0, total_6_draws=ev["winning_draws"])
         is_running = (infinite and mode != "day_idle") or (not infinite and gen < max_epochs)
 
         if now - last_flush >= 2.0 or not is_running or stagnation == 0 or mode == "day_idle":
             _ACTIVE_STATE[game_code] = {
                 "running": is_running, "mode": mode, "latest_period": latest_period, "squad_size": len(population),
-                "days_back": days_back, "draws_in_window": len(tensors), "generation": gen, "epochs_done": gen,
-                "max_epochs": max_epochs, "epochs_per_sec": 0.0 if mode == "day_idle" else round(1.0 / max(0.05, auto_pause + 0.03), 2),
+                "days_back": eff_days, "draws_in_window": len(tensors), "generation": gen, "epochs_done": gen,
+                "max_epochs": max_epochs, "epochs_per_sec": 0.0 if mode == "day_idle" else round(1.0 / max(0.04, auto_pause + 0.03), 2),
                 "champion_version": champ_version, "is_draw_locked": is_upcoming_draw_locked(game_code),
                 "champion_name": champ_bot["bot_name"], "champion_age": champ_bot["age"],
                 "live_prestige": round(float(champ_bot.get("live_prestige", 0.0))),
@@ -129,7 +134,7 @@ async def hunt_for_game(
     return _ACTIVE_STATE.get(game_code, {})
 
 
-async def run_autonomous_hunter_daemon(days_back: int = 90, max_epochs: int = 0) -> None:
+async def run_autonomous_hunter_daemon(days_back: int = 0, max_epochs: int = 0) -> None:
     if _HUNTER_LOCK.locked():
         return
     async with _HUNTER_LOCK:

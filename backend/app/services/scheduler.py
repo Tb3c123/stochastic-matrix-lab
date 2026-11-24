@@ -71,7 +71,7 @@ async def auto_cycle_worker():
                                         live_sc = score_squad_on_official_draw(g_code, latest.draw_period, latest.winning_numbers)
                                         invalidate_game_cache(g_code)
                                         logger.info(f"[18:35 Draw Sync] Auto-eval {g_code}: {eval_res.get('message')} | Live winners={live_sc.get('winners')}")
-                                        asyncio.create_task(run_autonomous_hunter_daemon(days_back=90, max_epochs=0))
+                                        asyncio.create_task(run_autonomous_hunter_daemon(days_back=0, max_epochs=0))
                             except Exception as e:
                                 logger.error(f"[19:10 Draw Sync] Error checking/evaluating {g_code}: {e}")
 

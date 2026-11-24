@@ -12,7 +12,8 @@ export const TournamentArenaBoard: React.FC<{
   const rec6 = Number(evo.recent_6_draws || 0);
   const recTot = Number(evo.recent_total || 10);
   const win6Draws = Number(evo.winning_draws || 0);
-  const totalDraws = Number(evo.draws_in_window || 39);
+  const totalDraws = Number(evo.draws_in_window || 117);
+  const monthsLabel = `${Math.max(3, Math.round(Number(evo.days_back || 270) / 30))} Tháng`;
   const squadSz = Number(evo.squad_size || 12);
   const pctBar = Math.min(100, Math.round((rec6 / Math.max(1, recTot)) * 100));
   const board: any[] = evo.leaderboard || [];
@@ -77,7 +78,7 @@ export const TournamentArenaBoard: React.FC<{
 
         <div className="rounded-xl bg-slate-950/80 border border-slate-800 p-4 flex flex-col justify-between">
           <span className="text-xs font-bold text-emerald-300 flex items-center gap-1">
-            <Crosshair className="w-3.5 h-3.5" /> Tổng 90 Ngày Lịch Sử
+            <Crosshair className="w-3.5 h-3.5" /> Bề Dày {monthsLabel} Lịch Sử
           </span>
           <div className="text-2xl font-black text-white font-mono">
             {win6Draws} / {totalDraws} <span className="text-xs text-slate-400 font-normal">kỳ 6/6</span>
@@ -108,9 +109,9 @@ export const TournamentArenaBoard: React.FC<{
                 <th className="py-2.5 px-3">Hạng</th>
                 <th className="py-2.5 px-3">Chiến Binh (4 Đầu Vé)</th>
                 <th className="py-2.5 px-3">Tuổi Thọ</th>
-                <th className="py-2.5 px-3">Nổ 10 Kỳ Gần Nhất</th>
+                <th className="py-2.5 px-3">Nổ Kỳ Gần Nhất</th>
                 <th className="py-2.5 px-3">Kỳ 6/6 Mới Nhất</th>
-                <th className="py-2.5 px-3">Tổng 90 Ngày</th>
+                <th className="py-2.5 px-3">Tổng {monthsLabel}</th>
                 <th className="py-2.5 px-3">Điểm Thực Chiến</th>
               </tr>
             </thead>

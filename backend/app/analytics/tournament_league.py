@@ -7,11 +7,11 @@ ARCHETYPE_SEEDS: List[Tuple[str, Dict[str, Any]]] = [
     ("🔥 Hỏa Long Sát Kỳ", {"w_hot": 0.42, "w_lateness": 0.22, "w_gauss_sum": 0.22, "w_parity": 0.14, "w_hot_fast": 0.42, "w_markov": 0.20, "w_pair": 0.18}),
     ("⏳ Thợ Săn Tháng Mới", {"w_hot": 0.18, "w_lateness": 0.46, "w_gauss_sum": 0.22, "w_parity": 0.14, "w_hot_fast": 0.16, "w_markov": 0.24, "w_pair": 0.18}),
     ("🔗 Bậc Thầy Markov 6/6", {"w_hot": 0.24, "w_lateness": 0.28, "w_gauss_sum": 0.30, "w_parity": 0.18, "w_hot_fast": 0.24, "w_markov": 0.48, "w_pair": 0.26}),
-    ("🕸️ Xạ Thủ Đa Đầu 6/6", {"w_hot": 0.26, "w_lateness": 0.34, "w_gauss_sum": 0.24, "w_parity": 0.16, "w_hot_fast": 0.26, "w_markov": 0.30, "w_pair": 0.28}),
+    ("🏛️ Trụ Cột Trường Kỳ", {"w_hot": 0.26, "w_lateness": 0.34, "w_gauss_sum": 0.24, "w_parity": 0.16, "w_hot_fast": 0.24, "w_markov": 0.30, "w_pair": 0.28}),
     ("🤝 Chiến Thần Cặp Số", {"w_hot": 0.25, "w_lateness": 0.30, "w_gauss_sum": 0.27, "w_parity": 0.18, "w_hot_fast": 0.20, "w_markov": 0.24, "w_pair": 0.45}),
     ("📐 Kiến Trúc Sư 6/6", {"w_hot": 0.22, "w_lateness": 0.26, "w_gauss_sum": 0.36, "w_parity": 0.16, "w_hot_fast": 0.18, "w_markov": 0.22, "w_pair": 0.20}),
     ("⚡ Tia Chớp Hiện Tại", {"w_hot": 0.36, "w_lateness": 0.24, "w_gauss_sum": 0.24, "w_parity": 0.16, "w_hot_fast": 0.48, "w_markov": 0.34, "w_pair": 0.24}),
-    ("🌪️ Dị Nhân Đột Kích", {"w_hot": 0.20, "w_lateness": 0.40, "w_gauss_sum": 0.20, "w_parity": 0.20, "w_hot_fast": 0.32, "w_markov": 0.38, "w_pair": 0.34}),
+    ("🌪️ Dị Nhân Toàn Cục", {"w_hot": 0.20, "w_lateness": 0.40, "w_gauss_sum": 0.20, "w_parity": 0.20, "w_hot_fast": 0.32, "w_markov": 0.38, "w_pair": 0.34}),
 ]
 
 
@@ -35,46 +35,54 @@ def crossover_gladiators(
     pa: Dict[str, Any], pb: Dict[str, Any], generation: int, idx: int, max_num: int,
     stagnation_gens: int = 0, rng: Optional[random.Random] = None,
 ) -> Dict[str, Any]:
+    """2+2 Horizon Division: Slots 0-1 specialize in Recent Nov draws; Slots 2-3 specialize in 9-12m Long Depth."""
     r = rng or random
     ga, gb = pa["genome"], pb["genome"]
     eva, evb = pa.get("eval") or {}, pb.get("eval") or {}
-    candidates: List[Tuple[Dict[str, Any], Dict[str, Any]]] = []
+    cands: List[Tuple[Dict[str, Any], Dict[str, Any]]] = []
     for g_src, ev_src in ((ga, eva), (gb, evb)):
         hs_list = ev_src.get("head_stats") or []
         for hi, h in enumerate(g_src.get("heads") or []):
-            st = hs_list[hi] if hi < len(hs_list) else {"recent_m6": set(), "m6_draws": set(), "m5": 0.0, "m4": 0.0, "sq": 0.0}
-            candidates.append((h, st))
+            st = hs_list[hi] if hi < len(hs_list) else {"recent_m6": set(), "m6_draws": set(), "rec_m5": 0, "rec_sq": 0, "long_m5": 0, "long_sq": 0}
+            cands.append((h, st))
 
     cov_rec, cov_all, seen_sigs = set(), set(), set()
     chosen_heads: List[Dict[str, Any]] = []
-    pool_cands = list(candidates)
-    while len(chosen_heads) < 4 and pool_cands:
-        pool_cands.sort(
-            key=lambda it: (len(it[1].get("recent_m6", set()) - cov_rec), len(it[1]["m6_draws"] - cov_all), it[1]["m5"], it[1]["m4"], it[1]["sq"]),
-            reverse=True,
-        )
-        best_h, best_st = pool_cands.pop(0)
-        sig = tuple(tuple(p) for p in best_h.get("pats", []))
-        if sig in seen_sigs:
+    pool = list(cands)
+    sigma = 0.05 if stagnation_gens < 8 else 0.10
+
+    for slot in range(4):
+        if not pool:
+            chosen_heads.append(make_specialist_head(ga, max_num=max_num, rng=r))
             continue
-        seen_sigs.add(sig)
-        rec_gain = len(best_st.get("recent_m6", set()) - cov_rec)
-        all_gain = len(best_st["m6_draws"] - cov_all)
-        cov_rec |= best_st.get("recent_m6", set())
-        cov_all |= best_st["m6_draws"]
-        if rec_gain == 0 and all_gain == 0:
-            clone_h = make_specialist_head(ga, max_num=max_num, rng=r)
+        if slot < 2:
+            pool.sort(key=lambda it: (len(it[1].get("recent_m6", set()) - cov_rec), it[1].get("rec_m5", 0), it[1].get("rec_sq", 0)), reverse=True)
         else:
-            clone_h = {**best_h, "pats": [list(p) for p in best_h["pats"]]}
-            if len(chosen_heads) == 3:
-                clone_h = mutate_head(clone_h, max_num=max_num, sigma=0.05 if stagnation_gens < 8 else 0.10, rng=r)
+            pool.sort(key=lambda it: (len(it[1]["m6_draws"] - cov_all), len(it[1]["m6_draws"]), it[1].get("long_m5", 0), it[1].get("long_sq", 0)), reverse=True)
+
+        picked_h, picked_st = None, None
+        while pool:
+            cand_h, cand_st = pool.pop(0)
+            sig = tuple(tuple(p) for p in cand_h.get("pats", []))
+            if sig not in seen_sigs:
+                seen_sigs.add(sig)
+                picked_h, picked_st = cand_h, cand_st
+                break
+
+        if picked_h is None:
+            chosen_heads.append(make_specialist_head(ga, max_num=max_num, rng=r))
+            continue
+
+        gain = len(picked_st.get("recent_m6", set()) - cov_rec) if slot < 2 else len(picked_st["m6_draws"] - cov_all)
+        cov_rec |= picked_st.get("recent_m6", set())
+        cov_all |= picked_st["m6_draws"]
+        clone_h = {**picked_h, "pats": [list(p) for p in picked_h["pats"]]}
+        if gain == 0 or slot in (1, 3):
+            clone_h = mutate_head(clone_h, max_num=max_num, sigma=sigma, rng=r)
         chosen_heads.append(clone_h)
 
-    while len(chosen_heads) < 4:
-        chosen_heads.append(make_specialist_head(ga, max_num=max_num, rng=r))
-
     inherited_prestige = round(max(float(pa.get("live_prestige", 0.0)), float(pb.get("live_prestige", 0.0))) * 0.5, 1)
-    child_g = mutate_genome({**ga, "heads": chosen_heads}, sigma=0.04, max_num=max_num, rng=r)
+    child_g = mutate_genome({**ga, "heads": chosen_heads}, sigma=sigma, max_num=max_num, rng=r)
     return {"bot_id": f"gen{generation}-c{idx}", "bot_name": f"🧬 Chiến Binh 6/6 Đời #{generation}.{idx}", "age": 1, "live_prestige": inherited_prestige, "genome": child_g, "eval": None}
 
 
@@ -92,10 +100,10 @@ def run_tournament_generation(
     ranked = sorted(
         population,
         key=lambda b: (
-            b["eval"]["recent_6_draws"],
-            round(float(b.get("live_prestige", 0.0)) / 100_000.0, 2),
-            b["eval"]["winning_draws"],
+            1 if b["eval"]["recent_6_draws"] >= 1 else 0,
             b["eval"]["fitness"] + float(b.get("live_prestige", 0.0)),
+            b["eval"]["winning_draws"],
+            b["eval"]["recent_6_draws"],
         ),
         reverse=True,
     )
@@ -131,7 +139,7 @@ def run_tournament_generation(
     while len(next_pop) < next_size:
         name, tmpl = r.choice(ARCHETYPE_SEEDS)
         next_pop.append({
-            "bot_id": f"gen{generation + 1}-w{len(next_pop)}", "bot_name": f"⚡ Tân Binh Sát Kỳ #{generation + 1}",
+            "bot_id": f"gen{generation + 1}-w{len(next_pop)}", "bot_name": f"⚡ Tân Binh Toàn Cục #{generation + 1}",
             "age": 1, "live_prestige": 0.0, "genome": mutate_genome(tmpl, sigma=0.10, max_num=max_num, rng=r), "eval": None,
         })
 
