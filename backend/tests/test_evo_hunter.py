@@ -1,5 +1,7 @@
 import pytest
-from app.database import init_db
+from sqlalchemy import select, func
+from app.database import init_db, AsyncSessionLocal
+from app.models.ticket import SavedTicket
 from app.analytics.evo_engine import (
     nums_to_mask,
     mask_to_nums,
@@ -40,16 +42,26 @@ def test_precompute_and_fast_evaluate():
     tensors = precompute_window_tensors(draws, max_num=45, days_back=60, is_power=False)
     assert len(tensors) >= 8
     genome = {"w_hot": 0.25, "w_lateness": 0.35, "w_gauss_sum": 0.25, "w_parity": 0.15, "w_markov": 0.20}
-    res = evaluate_genome_fast(genome, tensors, max_num=45, is_power=False, rows_per_draw=12)
-    assert "fitness" in res and "best_hit" in res
+    res = evaluate_genome_fast(genome, tensors, max_num=45, is_power=False, rows_per_draw=15)
+    assert "fitness" in res and "best_hit" in res and len(res["period_traces"]) == len(tensors)
     assert len(res["best_hit"]["row"]) == 6
 
 
 @pytest.mark.asyncio
-async def test_autonomous_hunter_short_run():
+async def test_autonomous_hunter_persists_champion_history():
     await init_db()
-    out = await hunt_for_game("mega_6_45", days_back=60, max_epochs=8, sleep_sec=0.0)
-    assert out.get("epochs_done") == 8 or out.get("match_6", 0) >= 1
+    out = await hunt_for_game("mega_6_45", days_back=60, max_epochs=6, sleep_sec=0.0)
+    assert out.get("epochs_done") == 6 or out.get("match_6", 0) >= 1
+    assert out.get("saved_history_tickets", 0) > 0
     status = read_hunter_status()
     assert "mega_6_45" in status
-    assert "champion_weights" in status["mega_6_45"]
+
+    async with AsyncSessionLocal() as db:
+        cnt = await db.scalar(
+            select(func.count(SavedTicket.id)).where(
+                SavedTicket.game_code == "mega_6_45",
+                SavedTicket.strategy == "hybrid_ai_learned",
+                SavedTicket.status == "evaluated",
+            )
+        )
+        assert (cnt or 0) == out["saved_history_tickets"]

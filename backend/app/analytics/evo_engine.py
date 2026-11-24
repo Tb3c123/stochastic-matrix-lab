@@ -68,20 +68,21 @@ def evaluate_genome_fast(
     genome: Dict[str, float], tensors: List[Dict[str, Any]], max_num: int,
     is_power: bool = False, rows_per_draw: int = 20, rng: Optional[random.Random] = None,
 ) -> Dict[str, Any]:
-    """Evaluate a genome across all precomputed draws using uint64 bitmasks + 30% Holdout split."""
+    """Evaluate a genome across precomputed draws using uint64 bitmasks + retain compact RAM trace."""
     r = rng or random
     wh, wl, wg, wm = genome["w_hot"], genome["w_lateness"], genome["w_gauss_sum"], genome.get("w_markov", 0.20)
     target_mid = 167.0 if is_power else 139.0
     m6, jp2, m5, m4, m3, holdout_hits = 0, 0, 0, 0, 0, 0
     holdout_start = max(1, int(len(tensors) * 0.70))
     best_hit: Dict[str, Any] = {"match_count": 0, "matched_special": False, "draw_period": "", "row": []}
+    period_traces: List[Dict[str, Any]] = []
 
     for t_idx, step in enumerate(tensors):
         ewma, haz, mkv = step["ewma"], step["hazard"], step["markov"]
         scored = sorted(range(1, max_num + 1), key=lambda n: (wh * ewma[n]) + (wl * haz[n]) + (wm * mkv[n]), reverse=True)
         top_pool = scored[:26]
         sp_ranked = sorted(range(1, 56), key=lambda n: step["sp_scores"].get(n, 0.5), reverse=True) if is_power else []
-        win_mask, sp_target, row_masks = step["win_mask"], step["special_num"], []
+        win_mask, sp_target, row_masks, sp_picks = step["win_mask"], step["special_num"], [], []
 
         for r_i in range(rows_per_draw):
             best_m, best_pen = 0, 999.0
@@ -97,9 +98,11 @@ def evaluate_genome_fast(
                     best_pen, best_m = pen, cm
             best_m = best_m or nums_to_mask(r.sample(top_pool, 6))
             row_masks.append(best_m)
+            cand_sp = next((s for s in sp_ranked[(r_i % 5):] + sp_ranked if not ((best_m >> s) & 1)), 1) if is_power else None
+            sp_picks.append(cand_sp)
 
             mc = (best_m & win_mask).bit_count()
-            m_sp = bool(is_power and sp_target and mc == 5 and next((s for s in sp_ranked[:6] if not ((best_m >> s) & 1)), sp_ranked[0]) == sp_target)
+            m_sp = bool(is_power and sp_target and cand_sp == sp_target)
             if mc == 6:
                 m6 += 1
             elif mc == 5 and m_sp:
@@ -114,6 +117,11 @@ def evaluate_genome_fast(
                 holdout_hits += mc
             if (mc, 1 if m_sp else 0) > (best_hit["match_count"], 1 if best_hit["matched_special"] else 0):
                 best_hit = {"match_count": mc, "matched_special": m_sp, "draw_period": step["draw_period"], "draw_date": step["draw_date"], "row": mask_to_nums(best_m, max_num), "winning_numbers": step["win_nums"]}
+        period_traces.append({"draw_period": step["draw_period"], "row_masks": row_masks, "sp_picks": sp_picks})
 
     fitness = (m6 * 1_000_000.0) + (jp2 * 250_000.0) + (m5 * 4_500.0) + (m4 * 140.0) + (m3 * 12.0) + (holdout_hits * 3.5)
-    return {"genome": genome, "fitness": round(fitness, 2), "match_6": m6, "jackpot_2": jp2, "match_5": m5, "match_4": m4, "match_3": m3, "holdout_score": holdout_hits, "best_hit": best_hit}
+    return {
+        "genome": genome, "fitness": round(fitness, 2),
+        "match_6": m6, "jackpot_2": jp2, "match_5": m5, "match_4": m4, "match_3": m3,
+        "holdout_score": holdout_hits, "best_hit": best_hit, "period_traces": period_traces,
+    }
