@@ -46,6 +46,7 @@ def crossover_gladiators(
             candidates.append((h, st))
 
     covered = set()
+    seen_sigs = set()
     chosen_heads: List[Dict[str, Any]] = []
     pool_cands = list(candidates)
     while len(chosen_heads) < 4 and pool_cands:
@@ -54,12 +55,18 @@ def crossover_gladiators(
             reverse=True,
         )
         best_h, best_st = pool_cands.pop(0)
-        clone_h = {**best_h, "pats": [list(p) for p in best_h["pats"]]}
+        sig = tuple(tuple(p) for p in best_h.get("pats", []))
+        if sig in seen_sigs:
+            continue
+        seen_sigs.add(sig)
         new_gains = len(best_st["m6_draws"] - covered)
         covered |= best_st["m6_draws"]
-        if new_gains == 0 or len(chosen_heads) == 3:
-            sigma = 0.04 if stagnation_gens < 8 else 0.10
-            clone_h = mutate_head(clone_h, max_num=max_num, sigma=sigma, rng=r)
+        if new_gains == 0:
+            clone_h = make_specialist_head(ga, max_num=max_num, rng=r)
+        else:
+            clone_h = {**best_h, "pats": [list(p) for p in best_h["pats"]]}
+            if len(chosen_heads) == 3:
+                clone_h = mutate_head(clone_h, max_num=max_num, sigma=0.05 if stagnation_gens < 8 else 0.10, rng=r)
         chosen_heads.append(clone_h)
 
     while len(chosen_heads) < 4:

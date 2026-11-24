@@ -33,8 +33,13 @@ def test_pure_6of6_strict_selection_and_multihead_reproducibility():
     r1 = evaluate_genome_fast(g, tensors, max_num=45, is_power=False)
     r2 = evaluate_genome_fast(g, tensors, max_num=45, is_power=False)
     assert r1["fitness"] == r2["fitness"]
-    assert r1["winning_draws"] == (r1["winning_draws"] if r1["match_6"] > 0 else 0)
-    assert r1["period_traces"][0]["row_masks"] == r2["period_traces"][0]["row_masks"]
+    assert r1["winning_draws"] == r1["match_6"]
+    masks0 = r1["period_traces"][0]["row_masks"]
+    assert masks0 == r2["period_traces"][0]["row_masks"]
+    assert len(set(masks0)) == len(masks0)
+    for i in range(len(masks0)):
+        for j in range(i + 1, len(masks0)):
+            assert (masks0[i] & masks0[j]).bit_count() <= 4
 
     pop = seed_initial_population(g, pop_size=12, max_num=45, rng=rng)
     best_prev = (-1, -1, -1.0)

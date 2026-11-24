@@ -130,11 +130,11 @@ def evaluate_genome_fast(
     win_6_cnt, ho_6_cnt = len(m6_draws), len(ho_m6_draws)
     freq_pct = round(win_6_cnt / total_draws * 100.0, 2)
     ho_pct = round(ho_6_cnt / ho_total * 100.0, 2)
-    fitness = round((win_6_cnt * 1_000_000.0) + (m6 * 40_000.0) + (ho_6_cnt * 150_000.0) + (m5 * 600.0) + (m4 * 18.0) + (sq_prox * 0.05), 2)
+    fitness = round((win_6_cnt * 1_000_000.0) + (ho_6_cnt * 150_000.0) + (m5 * 600.0) + (m4 * 18.0) + (sq_prox * 0.04), 2)
     return {
         "genome": genome, "fitness": fitness, "winning_draws": win_6_cnt, "draws_total": total_draws,
         "hit_frequency_pct": freq_pct, "holdout_wins": ho_6_cnt, "holdout_total": ho_total,
-        "holdout_frequency_pct": ho_pct, "max_drought": total_draws - win_6_cnt, "multi_hit_draws": max(0, m6 - win_6_cnt),
-        "match_6": m6, "jackpot_2": jp2, "match_5": m5, "match_4": m4, "match_3": m3,
+        "holdout_frequency_pct": ho_pct, "max_drought": total_draws - win_6_cnt, "multi_hit_draws": 0,
+        "match_6": win_6_cnt, "jackpot_2": jp2, "match_5": m5, "match_4": m4, "match_3": m3,
         "head_stats": head_stats, "holdout_score": ho_6_cnt, "best_hit": best_hit, "period_traces": traces,
     }

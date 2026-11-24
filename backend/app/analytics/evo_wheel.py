@@ -77,6 +77,38 @@ def rank_balls_for_head(head: Dict[str, Any], step: Dict[str, Any], max_num: int
     return ranked
 
 
+def _diversify_mask(raw_mask: int, ranked: List[int], prev_masks: List[int], row_seed: int, max_ov: int = 3) -> int:
+    if raw_mask.bit_count() == 6 and all((raw_mask & pm).bit_count() <= max_ov for pm in prev_masks):
+        return raw_mask
+    n_len = len(ranked)
+    chosen_mask = 0
+    chosen_cnt = 0
+    start = (row_seed * 7) % n_len
+    stride = ((row_seed % 5) * 2) + 1
+    # Keep up to 3 non-conflicting balls from raw_mask first
+    for b in ranked:
+        if ((raw_mask >> b) & 1) and chosen_cnt < 3:
+            trial = chosen_mask | (1 << b)
+            if all((trial & pm).bit_count() <= max_ov for pm in prev_masks):
+                chosen_mask, chosen_cnt = trial, chosen_cnt + 1
+    for j in range(n_len * 2):
+        if chosen_cnt == 6:
+            break
+        cand = ranked[(start + j * stride) % n_len]
+        if (chosen_mask >> cand) & 1:
+            continue
+        trial = chosen_mask | (1 << cand)
+        cap = max_ov if j < n_len else 4
+        if all((trial & pm).bit_count() <= cap for pm in prev_masks):
+            chosen_mask, chosen_cnt = trial, chosen_cnt + 1
+    for cand in ranked:
+        if chosen_cnt == 6:
+            break
+        if not ((chosen_mask >> cand) & 1):
+            chosen_mask, chosen_cnt = chosen_mask | (1 << cand), chosen_cnt + 1
+    return chosen_mask
+
+
 def build_deterministic_rows(
     genome: Dict[str, Any], step: Dict[str, Any], max_num: int, is_power: bool = False, rows_per_draw: int = 20,
 ) -> Tuple[List[int], List[Optional[int]]]:
@@ -86,17 +118,13 @@ def build_deterministic_rows(
     sp_picks: List[Optional[int]] = []
 
     if heads:
-        for h in heads:
+        for h_idx, h in enumerate(heads):
             ranked = rank_balls_for_head(h, step, max_num)
-            for pat in h.get("pats", []):
-                cm = 0
+            for p_idx, pat in enumerate(h.get("pats", [])):
+                raw_m = 0
                 for pos in pat:
-                    cm |= (1 << ranked[pos % max_num])
-                if cm.bit_count() < 6:
-                    for extra in ranked:
-                        cm |= (1 << extra)
-                        if cm.bit_count() == 6:
-                            break
+                    raw_m |= (1 << ranked[pos % max_num])
+                cm = _diversify_mask(raw_m, ranked, row_masks, h_idx * 5 + p_idx, max_ov=3)
                 row_masks.append(cm)
                 r_idx = len(sp_picks)
                 sp_picks.append(next((s for s in sp_ranked[(r_idx % 8):] + sp_ranked if not ((cm >> s) & 1)), 1) if is_power else None)
@@ -108,18 +136,9 @@ def build_deterministic_rows(
         "wl": genome.get("w_lateness", 0.35), "wm": genome.get("w_markov", 0.22), "wpr": genome.get("w_pair", 0.16),
     }
     ranked = rank_balls_for_head(fallback_head, step, max_num)
-    stride = max(1, int(genome.get("wheel_stride", 5)))
-    pool_sz = max(12, min(max_num, int(genome.get("pool_size", 24))))
     while len(row_masks) < rows_per_draw:
         r_i = len(row_masks)
-        picks = []
-        for j in range(max_num):
-            cand = ranked[(r_i * stride + j * ((r_i % 3) + 1)) % (pool_sz if j < pool_sz else max_num)]
-            if cand not in picks:
-                picks.append(cand)
-            if len(picks) == 6:
-                break
-        cm = nums_to_mask(picks)
+        cm = _diversify_mask(0, ranked, row_masks, r_i + 1, max_ov=3)
         row_masks.append(cm)
         sp_picks.append(next((s for s in sp_ranked[(r_i % 8):] + sp_ranked if not ((cm >> s) & 1)), 1) if is_power else None)
     return row_masks, sp_picks
