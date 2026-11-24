@@ -78,7 +78,7 @@ def crossover_gladiators(
         cov_all |= picked_st["m6_draws"]
         clone_h = {**picked_h, "locked": gain > 0, "pats": [list(p) for p in picked_h["pats"]]}
         if gain == 0:
-            clone_h = mutate_head(clone_h, max_num=max_num, sigma=sigma, rng=r)
+            clone_h = make_specialist_head(ga, max_num=max_num, rng=r) if r.random() < 0.28 else mutate_head(clone_h, max_num=max_num, sigma=sigma, rng=r)
         chosen_heads.append(clone_h)
 
     inherited_prestige = round(max(float(pa.get("live_prestige", 0.0)), float(pb.get("live_prestige", 0.0))) * 0.5, 1)
@@ -124,6 +124,8 @@ def run_tournament_generation(
             "match_6": ev["match_6"], "match_5": ev["match_5"], "match_4": ev["match_4"],
         })
 
+    c_m6 = set().union(*(s["m6_draws"] for s in ranked[0]["eval"].get("head_stats", [])))
+    donors = [b for b in ranked[1:] if set().union(*(s["m6_draws"] for s in b["eval"].get("head_stats", []))) - c_m6]
     pool = ranked[:max(4, min(len(ranked), next_size // 2))]
     weights = [2.5 if float(b.get("live_prestige", 0.0)) > 0 else 1.0 for b in pool]
     next_pop: List[Dict[str, Any]] = [{**e, "age": e["age"] + 1} for e in elites]
@@ -131,7 +133,7 @@ def run_tournament_generation(
     for c_i in range(1, max(1, next_size - elite_cnt - fresh_slots) + 1):
         if len(next_pop) >= next_size - fresh_slots:
             break
-        pa, pb = r.choices(pool, weights=weights, k=2)
+        pa, pb = (ranked[0], donors[0]) if (donors and c_i == 1) else r.choices(pool, weights=weights, k=2)
         if pa is pb and len(pool) > 1:
             pb = r.choice([x for x in pool if x is not pa])
         next_pop.append(crossover_gladiators(pa, pb, generation + 1, c_i, max_num=max_num, stagnation_gens=stagnation_gens, rng=r))

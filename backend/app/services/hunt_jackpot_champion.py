@@ -63,7 +63,8 @@ async def hunt_for_game(
         b["live_prestige"] = prestige_map.get(b["bot_id"], 0.0)
 
     best_sig = (-1.0, -1, -1)
-    min_total_gate = 3
+    init_gate = 2 if is_power else 3
+    min_total_gate = init_gate
     champ_version = int(prev_state.get("champion_version", 0))
     saved_hist_cnt = int(prev_state.get("saved_history_tickets", 0))
     stagnation = total_culled = gen = 0
@@ -80,7 +81,7 @@ async def hunt_for_game(
                 for b in population:
                     b["eval"] = None
                     b["live_prestige"] = prestige_map.get(b["bot_id"], b.get("live_prestige", 0.0))
-                best_sig, min_total_gate, stagnation, t0 = (-1.0, -1, -1), 3, 0, time.monotonic()
+                best_sig, min_total_gate, stagnation, t0 = (-1.0, -1, -1), init_gate, 0, time.monotonic()
 
         gen += 1
         target_sz = get_target_squad_size() if infinite else len(population)
@@ -105,7 +106,7 @@ async def hunt_for_game(
 
         population = out["next_population"]
         now = time.monotonic()
-        mode, auto_pause = compute_thermal_pacing(ev["recent_6_draws"], stagnation, now - t0, total_6_draws=ev["winning_draws"])
+        mode, auto_pause = compute_thermal_pacing(ev["recent_6_draws"], stagnation, now - t0, total_6_draws=ev["winning_draws"], min_gate=init_gate)
         is_running = (infinite and mode != "day_idle") or (not infinite and gen < max_epochs)
 
         if now - last_flush >= 2.0 or not is_running or stagnation == 0 or mode == "day_idle":

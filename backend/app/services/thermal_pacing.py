@@ -26,11 +26,11 @@ def get_target_squad_size(now_vn: Optional[datetime] = None) -> int:
 
 def compute_thermal_pacing(
     recent_6_draws: int, stagnation: int, elapsed_sec: float,
-    now_vn: Optional[datetime] = None, total_6_draws: int = 4,
+    now_vn: Optional[datetime] = None, total_6_draws: int = 4, min_gate: int = 3,
 ) -> Tuple[str, float]:
     if is_night_boost_window(now_vn):
         return ("night_cooldown", 8.0) if stagnation >= 2500 else ("night_boost", 0.24)
-    if (recent_6_draws == 0 or total_6_draws < 3) and elapsed_sec < 300.0:
+    if (recent_6_draws == 0 or total_6_draws < min_gate) and elapsed_sec < 300.0:
         return "warmup", 0.04
     if stagnation >= 500:
         return "day_idle", 45.0
