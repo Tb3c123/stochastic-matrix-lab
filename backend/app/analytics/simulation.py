@@ -10,6 +10,10 @@ from app.models.learning import AILearningState
 from app.analytics.lateness import calculate_lateness
 from app.analytics.frequency import calculate_hot_cold
 from app.analytics.bandit import select_variant_order
+from app.analytics.markov_features import (
+    compute_ewma_hot_posterior, compute_hazard_lateness_scores,
+    compute_lag1_markov_scores, compute_special_ball_scores,
+)
 from app.analytics.hybrid_generator import generate_variant_ticket_rows, pick_special_numbers
 from app.analytics.sim_eval import build_benchmark_ticket, evaluate_and_build_ticket_record
 from app.analytics.hybrid_learning import (
@@ -20,13 +24,16 @@ from app.analytics.hybrid_learning import (
 
 def generate_walk_forward_hybrid_variant_ticket(
     max_num: int, is_power: bool, state: AILearningState, freq_map: Dict[int, float],
-    late_map: Dict[int, int], variant_index: int, excluded_rows: List[List[int]], usage_map: Dict[int, int],
+    late_map: Dict[int, float], variant_index: int, excluded_rows: List[List[int]],
+    usage_map: Dict[int, int], markov_map: Optional[Dict[int, float]] = None,
+    special_scores: Optional[Dict[int, float]] = None,
 ) -> Tuple[List[List[int]], List[Optional[int]], List[str]]:
     game_code = "power_6_55" if is_power else "mega_6_45"
     rows, row_strats, scores = generate_variant_ticket_rows(
-        game_code, max_num, state, freq_map, late_map, variant_index, excluded_rows, usage_map, iterations=80
+        game_code, max_num, state, freq_map, late_map, variant_index,
+        excluded_rows, usage_map, iterations=100, markov_map=markov_map,
     )
-    return rows, pick_special_numbers(is_power, rows, scores, late_map), row_strats
+    return rows, pick_special_numbers(is_power, rows, scores, late_map, special_scores=special_scores), row_strats
 
 
 def _select_recent_draws(all_draws: List[DrawResult], days_back: int) -> List[DrawResult]:
@@ -44,17 +51,13 @@ def _select_recent_draws(all_draws: List[DrawResult], days_back: int) -> List[Dr
 async def run_walk_forward_simulation(
     db: AsyncSession, days_back: int = 50, target_game_code: Optional[str] = None, reset_existing: bool = False,
 ) -> Dict[str, Any]:
-    """Execute strict walk-forward simulation across past `days_back` days without lookahead bias."""
     game_codes = [target_game_code] if target_game_code else ["mega_6_45", "power_6_55"]
-    total_created, total_winning, total_prize = 0, 0, 0
-    draws_simulated: List[Dict[str, Any]] = []
-
+    total_created, total_winning, total_prize, draws_simulated = 0, 0, 0, []
     for game_code in game_codes:
         game = (await db.execute(select(LotteryGame).where(LotteryGame.code == game_code))).scalar_one_or_none()
         if not game:
             continue
         max_num, is_power = game.max_number, game_code == "power_6_55"
-
         if reset_existing:
             await db.execute(delete(SavedTicket).where(SavedTicket.game_code == game_code))
             await db.execute(delete(AILearningState).where(AILearningState.game_code == game_code))
@@ -72,18 +75,21 @@ async def run_walk_forward_simulation(
             hist_objs = [d for d in all_draws if d.draw_period < target_draw.draw_period]
             if len(hist_objs) < 8:
                 continue
-            history_draws = [{"draw_period": d.draw_period, "winning_numbers": d.winning_numbers} for d in hist_objs[-50:]]
+            history_draws = [{"draw_period": d.draw_period, "winning_numbers": d.winning_numbers, "special_number": d.special_number} for d in hist_objs[-50:]]
             hc = calculate_hot_cold(history_draws, max_number=max_num)
             hot_pool = [i["number"] for i in hc.get("hot_numbers", [])]
-            freq_map = {i["number"]: i["percentage"] for i in hc.get("hot_numbers", []) + hc.get("cold_numbers", [])}
             late_items = calculate_lateness(history_draws, max_number=max_num).get("items", [])
             overdue_pool = [i["number"] for i in sorted(late_items, key=lambda x: x["current_gap"], reverse=True)]
-            late_map = {i["number"]: i["current_gap"] for i in late_items}
+
+            state = await get_or_create_learning_state(db, game_code)
+            ewma_map = compute_ewma_hot_posterior(history_draws, max_num=max_num)
+            haz_map = compute_hazard_lateness_scores(history_draws, max_num=max_num)
+            mkv_map = compute_lag1_markov_scores(history_draws, max_num=max_num)
+            sp_map = compute_special_ball_scores(history_draws, w_hot=state.w_hot, w_late=state.w_lateness) if is_power else None
 
             existing = (await db.execute(select(SavedTicket).where(SavedTicket.game_code == game_code, SavedTicket.target_draw_period == target_draw.draw_period))).scalars().all()
             existing_strats = {t.strategy for t in existing}
             ai_tickets: List[SavedTicket] = []
-            state = await get_or_create_learning_state(db, game_code)
             curr_lvl = get_current_escalation_level(state)
             target_ai_cnt = curr_lvl + 1
 
@@ -91,38 +97,33 @@ async def run_walk_forward_simulation(
                 excl, usage = [], {}
                 for b_idx, v_idx in enumerate(select_variant_order(state.learning_logs, target_ai_cnt)):
                     vp = TICKET_VARIANT_PROFILES[min(v_idx, len(TICKET_VARIANT_PROFILES) - 1)]
-                    t_rows, t_sp, r_strats = generate_walk_forward_hybrid_variant_ticket(max_num, is_power, state, freq_map, late_map, v_idx, excl, usage)
+                    t_rows, t_sp, r_strats = generate_walk_forward_hybrid_variant_ticket(
+                        max_num, is_power, state, ewma_map, haz_map, v_idx, excl, usage, markov_map=mkv_map, special_scores=sp_map
+                    )
                     extra = {
                         "ticket_variant": vp, "escalation_level": curr_lvl, "batch_ticket_index": b_idx + 1,
                         "batch_ticket_total": target_ai_cnt, "auto_generated_by_ai": True,
-                        "strategy_name_override": f"{vp['variant_name']} (Bậc {curr_lvl}/{target_ai_cnt} Vé)" if target_ai_cnt > 1 else "AI Hybrid Learning Engine (3 Tầng)",
+                        "strategy_name_override": f"{vp['variant_name']} (Bậc {curr_lvl}/{target_ai_cnt} Vé)" if target_ai_cnt > 1 else "AI Hybrid v2.0 (Markov + Hedge + Wheel)",
                     }
                     saved_ai, prize_ai = evaluate_and_build_ticket_record(game_code, "hybrid_ai_learned", target_draw, t_rows, r_strats, t_sp, extra)
                     db.add(saved_ai)
                     total_created += 1
-                    if prize_ai > 0:
-                        total_winning += 1
-                        total_prize += prize_ai
+                    total_winning += 1 if prize_ai > 0 else 0
+                    total_prize += prize_ai
                     ai_tickets.append(saved_ai)
 
             for strat in ("balanced", "mean_reversion", "pure_random", "custom_manual", "mixed"):
                 if strat in existing_strats:
                     continue
-                saved_o, prize_o = build_benchmark_ticket(
-                    game_code, strat, max_num, is_power, target_draw, history_draws, overdue_pool, hot_pool
-                )
+                saved_o, prize_o = build_benchmark_ticket(game_code, strat, max_num, is_power, target_draw, history_draws, overdue_pool, hot_pool)
                 db.add(saved_o)
                 total_created += 1
-                if prize_o > 0:
-                    total_winning += 1
-                    total_prize += prize_o
+                total_winning += 1 if prize_o > 0 else 0
+                total_prize += prize_o
 
             await db.commit()
             if ai_tickets:
-                try:
-                    await recalibrate_hybrid_learning(db, game_code, target_draw, ai_tickets)
-                except Exception:
-                    pass
+                await recalibrate_hybrid_learning(db, game_code, target_draw, ai_tickets)
             draws_simulated.append({
                 "game_code": game_code, "draw_period": target_draw.draw_period, "draw_date": target_draw.draw_date,
                 "escalation_level_used": curr_lvl, "ai_tickets_generated": target_ai_cnt,
@@ -130,10 +131,8 @@ async def run_walk_forward_simulation(
             })
 
         if reset_existing:
-            try:
-                await execute_auto_cycle_pipeline(db, game_code)
-            except Exception:
-                pass
+            await execute_auto_cycle_pipeline(db, game_code)
+
     return {
         "days_back": days_back, "reset_existing": reset_existing, "total_simulated_tickets": total_created,
         "total_winning_tickets": total_winning, "total_prize_vnd": total_prize,
@@ -145,5 +144,5 @@ async def resimulate_power_655_clean(db: AsyncSession, days_back: int = 50) -> D
     sim_result = await run_walk_forward_simulation(db, days_back=days_back, target_game_code="power_6_55", reset_existing=True)
     return {
         "action": "resimulate_power_655_clean", "game_code": "power_6_55", "simulation_result": sim_result,
-        "message": f"Đã dọn dẹp toàn bộ dữ liệu vé Power 6/55 cũ và tái lập giả lập {days_back} ngày chuẩn 6 số chính + 1 số đặc biệt thành công!",
+        "message": f"Đã dọn dẹp toàn bộ dữ liệu vé Power 6/55 cũ và tái lập giả lập {days_back} ngày chuẩn v2.0 thành công!",
     }

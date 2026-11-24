@@ -1,3 +1,4 @@
+import math
 from typing import Dict, Any, List, Tuple
 
 PRIMES_SET = {2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43, 47, 53}
@@ -7,28 +8,16 @@ def compute_ac_value(sorted_nums: List[int]) -> int:
     """Compute Arithmetic Complexity (AC-Value): distinct pairwise diffs - (k - 1)."""
     if len(sorted_nums) < 2:
         return 0
-    pair_diffs = set()
-    for i in range(len(sorted_nums)):
-        for j in range(i + 1, len(sorted_nums)):
-            pair_diffs.add(abs(sorted_nums[j] - sorted_nums[i]))
+    pair_diffs = {
+        abs(sorted_nums[j] - sorted_nums[i])
+        for i in range(len(sorted_nums))
+        for j in range(i + 1, len(sorted_nums))
+    }
     return len(pair_diffs) - (len(sorted_nums) - 1)
 
 
-def evaluate_jackpot_dna_gates(
-    game_code: str,
-    numbers: List[int]
-) -> Dict[str, Any]:
-    """
-    Evaluate all 8 strict Jackpot 6/6 DNA Gates on a 6-number row:
-    1. Gaussian Sum optimal zone
-    2. Parity balance (2C:4L, 3C:3L, or 4C:2L)
-    3. AC-Value >= 9 (high arithmetic entropy)
-    4. Prime count in {2, 3}
-    5. Distinct modulo-10 last digits >= 5
-    6. Symmetric Low/High split (3 Low : 3 High)
-    7. Decades spread >= 4 & max <= 2 per decade & no 3-consecutive triplet
-    8. Anti-crowd protection (>= 2 numbers > 31) & wide span
-    """
+def evaluate_jackpot_dna_gates(game_code: str, numbers: List[int]) -> Dict[str, Any]:
+    """Evaluate all 8 strict Jackpot 6/6 DNA Gates on a 6-number row."""
     is_power = game_code == "power_6_55"
     nums = sorted(numbers)
     if len(nums) != 6:
@@ -45,10 +34,7 @@ def evaluate_jackpot_dna_gates(
     decade_list = [n // 10 for n in nums]
     decades_cnt = len(set(decade_list))
     max_per_decade = max(decade_list.count(d) for d in set(decade_list))
-    has_triplet = any(
-        nums[i + 1] - nums[i] == 1 and nums[i + 2] - nums[i + 1] == 1
-        for i in range(4)
-    )
+    has_triplet = any(nums[i + 1] - nums[i] == 1 and nums[i + 2] - nums[i + 1] == 1 for i in range(4))
     anti_crowd_cnt = sum(1 for n in nums if n > 31)
     span = nums[-1] - nums[0]
     min_span = 30 if is_power else 25
@@ -65,12 +51,8 @@ def evaluate_jackpot_dna_gates(
     }
     passed = sum(1 for ok in gates.values() if ok)
     return {
-        "passed_count": passed,
-        "total_gates": 8,
-        "is_perfect_dna": passed == 8,
-        "ac_value": ac_val,
-        "sum": sum_val,
-        "span": span,
+        "passed_count": passed, "total_gates": 8, "is_perfect_dna": passed == 8,
+        "ac_value": ac_val, "sum": sum_val, "span": span, "even_cnt": even_cnt, "low_cnt": low_cnt,
         "gates": gates,
     }
 
@@ -78,14 +60,27 @@ def evaluate_jackpot_dna_gates(
 def score_candidate_dna(
     game_code: str,
     candidate: List[int],
-    number_scores: Dict[int, float]
+    number_scores: Dict[int, float],
+    w_gauss: float = 0.25,
+    w_parity: float = 0.15,
 ) -> Tuple[int, float]:
-    """Return (gates_passed, composite_score) to rank candidates toward 8/8 Jackpot DNA."""
+    """Rank candidates using 8/8 DNA Gates + learned Gaussian bell density & Parity symmetry weights."""
     dna = evaluate_jackpot_dna_gates(game_code, candidate)
     passed = dna["passed_count"]
     is_power = game_code == "power_6_55"
-    target_mid = 162.5 if is_power else 140.0
-    sum_penalty = abs(dna.get("sum", target_mid) - target_mid) * 0.04
+    target_mid, sigma = (167.0, 18.0) if is_power else (139.0, 15.0)
+    s_val = dna.get("sum", target_mid)
+
+    gauss_density = math.exp(-((s_val - target_mid) ** 2) / (2.0 * (sigma ** 2)))
+    even_sym = 1.0 - (abs(dna.get("even_cnt", 3) - 3) / 3.0)
+    low_sym = 1.0 - (abs(dna.get("low_cnt", 3) - 3) / 3.0)
+    parity_symmetry = 0.6 * even_sym + 0.4 * low_sym
+
     num_score = sum(number_scores.get(n, 0.0) for n in candidate)
-    composite = (passed * 12.5) + (num_score * 4.0) - sum_penalty
+    composite = (
+        (passed * 12.5)
+        + (num_score * 4.2)
+        + (w_gauss * 16.0 * gauss_density)
+        + (w_parity * 12.0 * parity_symmetry)
+    )
     return passed, round(composite, 4)
