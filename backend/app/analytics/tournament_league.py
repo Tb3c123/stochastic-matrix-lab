@@ -76,8 +76,8 @@ def crossover_gladiators(
         gain = len(picked_st.get("recent_m6", set()) - cov_rec) if slot < 2 else len(picked_st["m6_draws"] - cov_all)
         cov_rec |= picked_st.get("recent_m6", set())
         cov_all |= picked_st["m6_draws"]
-        clone_h = {**picked_h, "pats": [list(p) for p in picked_h["pats"]]}
-        if gain == 0 or slot in (1, 3):
+        clone_h = {**picked_h, "locked": gain > 0, "pats": [list(p) for p in picked_h["pats"]]}
+        if gain == 0:
             clone_h = mutate_head(clone_h, max_num=max_num, sigma=sigma, rng=r)
         chosen_heads.append(clone_h)
 

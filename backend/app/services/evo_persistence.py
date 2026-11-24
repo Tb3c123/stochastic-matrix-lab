@@ -33,7 +33,7 @@ async def persist_alpha_record(
 ) -> Dict[str, Any]:
     ev, g = champ_bot["eval"], champ_bot["genome"]
     bh = ev["best_hit"]
-    rec_6 = ev.get("recent_6_draws", 0)
+    rec_6, rec_tot = ev.get("recent_6_draws", 0), ev.get("recent_total", 15)
     l_date = ev.get("latest_6_date") or bh.get("draw_date") or ""
     async with AsyncSessionLocal() as db:
         state = await get_or_create_learning_state(db, game_code)
@@ -43,9 +43,9 @@ async def persist_alpha_record(
         log_item = {
             "timestamp": datetime.utcnow().isoformat(), "draw_period": bh.get("draw_period") or "EVO",
             "draw_date": l_date or datetime.utcnow().strftime("%Y-%m-%d"), "winning_numbers": bh.get("winning_numbers", []),
-            "policy_action": f"🏆 Đời #{gen}: Nổ {rec_6}/10 kỳ sát nhất (Tổng {ev['winning_draws']} kỳ 6/6 • Mới nhất {l_date})",
+            "policy_action": f"🏆 Đời #{gen}: Nổ {rec_6}/{rec_tot} kỳ sát nhất (Tổng {ev['winning_draws']} kỳ 6/6 • Mới nhất {l_date})",
             "cycle_reward": ev["fitness"], "escalation_level": esc, "target_ticket_count": 4,
-            "feedback_summary": f"🔥 [ƯU TIÊN SÁT HIỆN TẠI ĐỜI #{gen}]: Khóa {rec_6}/10 kỳ gần nhất (Mới nhất: {l_date}) • Tổng {ev['winning_draws']}/{ev['draws_total']} kỳ 6/6.",
+            "feedback_summary": f"🔥 [ƯU TIÊN SÁT HIỆN TẠI ĐỜI #{gen}]: Khóa {rec_6}/{rec_tot} kỳ gần nhất (Mới nhất: {l_date}) • Tổng {ev['winning_draws']}/{ev['draws_total']} kỳ 6/6.",
             "weights": {"lateness": state.w_lateness, "hot": state.w_hot, "gauss_sum": state.w_gauss_sum, "parity": state.w_parity}, "bandit_reward": state.bandit_cumulative_reward,
         }
         state.learning_logs = (list(state.learning_logs or []) + [log_item])[-20:]

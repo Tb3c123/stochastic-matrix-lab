@@ -37,7 +37,7 @@ def precompute_window_tensors(
 
 def mutate_head(head: Dict[str, Any], max_num: int, sigma: float = 0.05, rng: Optional[random.Random] = None) -> Dict[str, Any]:
     r = rng or random
-    nh = {**head, "pats": [list(p) for p in head["pats"]]}
+    nh = {**head, "locked": False, "pats": [list(p) for p in head["pats"]]}
     if r.random() < 0.14:
         k = r.choice(["wh", "wf", "wl", "wm", "wpr"])
         nh[k] = round(max(0.04, min(0.65, float(nh.get(k, 0.25)) + r.gauss(0.0, sigma))), 3)
@@ -66,8 +66,10 @@ def mutate_genome(
     old_heads = parent.get("heads")
     if old_heads:
         new_heads = [dict(h, pats=[list(p) for p in h["pats"]]) for h in old_heads]
-        hi = r.randrange(len(new_heads))
-        new_heads[hi] = mutate_head(new_heads[hi], max_num=max_num, sigma=sigma, rng=r)
+        free_idx = [i for i, h in enumerate(new_heads) if not h.get("locked")]
+        if free_idx:
+            hi = r.choice(free_idx)
+            new_heads[hi] = mutate_head(new_heads[hi], max_num=max_num, sigma=sigma, rng=r)
     else:
         new_heads = [make_specialist_head(parent, max_num=max_num, rng=r) for _ in range(4)]
 
@@ -131,6 +133,8 @@ def evaluate_genome_fast(
         traces.append({"draw_period": step["draw_period"], "row_masks": row_masks, "sp_picks": sp_picks})
 
     win_6_cnt, rec_6_cnt = len(m6_draws), len(recent_m6)
+    for h_i, h in enumerate(heads):
+        h["locked"] = len(head_stats[h_i]["m6_draws"]) > 0
     older_6_cnt = win_6_cnt - rec_6_cnt
     fitness = round((rec_6_cnt * 3_500_000.0) + (older_6_cnt * 1_000_000.0) + (rec_m5 * 3_200.0) + (m5 * 700.0) + (rec_m4 * 60.0) + (m4 * 15.0) + (long_sq * 0.04), 2)
     return {
