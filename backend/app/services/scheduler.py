@@ -36,9 +36,9 @@ async def auto_cycle_worker():
             weekday = now_vn.weekday() # 0: Mon, 1: Tue, 2: Wed, 3: Thu, 4: Fri, 5: Sat, 6: Sun
 
             # ==============================================================
-            # TASK 1: 19:10 - 20:30 Evening Draw Sync & Evaluation
+            # TASK 1: 18:35 - 20:30 Evening Official Draw Sync & Real-Time Evaluation
             # ==============================================================
-            is_evening_sync_window = (hour == 19 and minute >= 10) or (hour == 20 and minute <= 30)
+            is_evening_sync_window = (hour == 18 and minute >= 35) or (hour == 19) or (hour == 20 and minute <= 30)
             if is_evening_sync_window:
                 for g_code in ["mega_6_45", "power_6_55"]:
                     # Mega: Wed(2), Fri(4), Sun(6); Power: Tue(1), Thu(3), Sat(5)
@@ -66,8 +66,8 @@ async def auto_cycle_worker():
                                         
                                         # Auto evaluate pending tickets & re-trigger background Jackpot Hunter
                                         eval_res = await evaluate_pending_tickets_core(session, g_code)
-                                        logger.info(f"[19:10 Draw Sync] Auto-evaluation for {g_code}: {eval_res.get('message')}")
-                                        asyncio.create_task(run_autonomous_hunter_daemon(days_back=90, max_epochs=250000))
+                                        logger.info(f"[18:35 Draw Sync] Auto-evaluation for {g_code}: {eval_res.get('message')}")
+                                        asyncio.create_task(run_autonomous_hunter_daemon(days_back=90, max_epochs=0))
                             except Exception as e:
                                 logger.error(f"[19:10 Draw Sync] Error checking/evaluating {g_code}: {e}")
 

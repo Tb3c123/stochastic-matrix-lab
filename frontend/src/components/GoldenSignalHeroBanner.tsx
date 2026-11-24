@@ -1,8 +1,9 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { API_BASE_URL } from "@/config/api";
-import { Sparkles, Copy, Check, ArrowRight, ShieldCheck, Cpu } from "lucide-react";
+import { Sparkles, Copy, Check, ArrowRight, Dna, Lock } from "lucide-react";
+import { GoldenSignalRowCard } from "./home/GoldenSignalRowCard";
 
 const fmtBall = (n: number) => (n < 10 ? `0${n}` : `${n}`);
 
@@ -10,25 +11,36 @@ export const GoldenSignalHeroBanner: React.FC<{
   gameCode: string;
   refreshTrigger?: number;
   onOpenAiTab: () => void;
-}> = ({ gameCode, refreshTrigger = 0, onOpenAiTab }) => {
+  onChampionUpgraded?: () => void;
+}> = ({ gameCode, refreshTrigger = 0, onOpenAiTab, onChampionUpgraded }) => {
   const [statusData, setStatusData] = useState<any>(null);
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
+  const verRef = useRef<number | null>(null);
 
   useEffect(() => {
     let mounted = true;
-    const load = () => {
+    const load = (force = false) => {
+      if (!force && typeof document !== "undefined" && document.hidden) return;
       fetch(`${API_BASE_URL}/api/v1/auto-cycle/status?game_code=${gameCode}`)
         .then((r) => r.json())
-        .then((j) => mounted && j.success && j.data && setStatusData(j.data))
+        .then((j) => {
+          if (!mounted || !j.success || !j.data) return;
+          setStatusData(j.data);
+          const nv = Number(j.data.champion_version || 0);
+          if (verRef.current !== null && nv > verRef.current) {
+            onChampionUpgraded?.();
+          }
+          verRef.current = nv;
+        })
         .catch(() => {});
     };
-    load();
-    const timer = setInterval(load, 8000);
+    load(true);
+    const timer = setInterval(() => load(false), 5000);
     return () => {
       mounted = false;
       clearInterval(timer);
     };
-  }, [gameCode, refreshTrigger]);
+  }, [gameCode, refreshTrigger, onChampionUpgraded]);
 
   if (!statusData) return null;
 
@@ -46,7 +58,6 @@ export const GoldenSignalHeroBanner: React.FC<{
               target_draw_date: t.target_draw_date,
               sum: (fc.numbers || []).reduce((a: number, b: number) => a + b, 0),
             }))
-            .filter((fc: any) => (fc.jackpot_gates_passed ?? 0) >= 7)
             .slice(0, 2)
         );
 
@@ -76,22 +87,25 @@ export const GoldenSignalHeroBanner: React.FC<{
           <div className="flex flex-wrap items-center gap-2">
             <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-black uppercase tracking-wider bg-gradient-to-r from-amber-400 to-yellow-300 text-slate-950 shadow-md">
               <Sparkles className="w-3.5 h-3.5" />
-              {isPerfect8 ? `THỜI ĐIỂM VÀNG • ${goldenRows.length} BỘ SỐ ĐẠT CHUẨN 8/8 CỔNG DNA` : "BỘ DÃY SỐ ĐẸP TIỀM NĂNG CAO KỲ TỚI"}
+              {isPerfect8 ? `TINH HOA ALPHA • ${goldenRows.length} DÃY ĐẠT 8/8 CỔNG DNA` : "BỘ SỐ KẾT TINH TỪ NHÀ VÔ ĐỊCH TẦN SUẤT"}
             </span>
             <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-500/15 text-emerald-300 border border-emerald-400/30">
               Kỳ #{period} • {drawDate} (18:00)
             </span>
-            {evo && (
+            {evo?.generation && (
               <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold bg-violet-500/20 text-violet-200 border border-violet-400/40">
-                <Cpu className={`w-3.5 h-3.5 text-violet-300 ${evo.running ? "animate-spin" : ""}`} />
-                {evo.match_6 > 0
-                  ? `Đã chốt Độc Đắc 6/6 ở vòng #${evo.epochs_done?.toLocaleString()} (Đã tự nạp!)`
-                  : `Săn ngầm ${evo.days_back} ngày: Vòng #${evo.epochs_done?.toLocaleString()} (${evo.epochs_per_sec}/s) • Đỉnh: ${evo.best_hit?.match_count || 3}/6 số`}
+                <Dna className={`w-3.5 h-3.5 text-violet-300 ${evo.running ? "animate-spin" : ""}`} />
+                Giải đấu Đời #{evo.generation.toLocaleString()} • Nổ {evo.winning_draws}/{evo.draws_in_window} kỳ ({evo.hit_frequency_pct}%) • Max trượt {evo.max_drought} kỳ
+              </span>
+            )}
+            {statusData.is_draw_locked && (
+              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-amber-500/20 text-amber-200 border border-amber-400/40">
+                <Lock className="w-3 h-3" /> Đã khóa chốt giờ quay
               </span>
             )}
           </div>
           <h3 className="text-xl md:text-2xl font-extrabold text-white">
-            Bộ Dãy Số Đẹp Khuyên Dùng Cho Kỳ Sắp Tới ({gameCode === "power_6_55" ? "Power 6/55" : "Mega 6/45"})
+            Bộ Dãy Số Đẹp Kỳ Sắp Tới ({gameCode === "power_6_55" ? "Power 6/55" : "Mega 6/45"} • v{statusData.champion_version || 1})
           </h3>
         </div>
         <div className="flex flex-wrap items-center gap-2.5">
@@ -100,47 +114,21 @@ export const GoldenSignalHeroBanner: React.FC<{
             {copiedKey === "ALL" ? "Đã Chép Trọn Bộ!" : "Sao Chép Nguyên Bộ Số Đẹp"}
           </button>
           <button onClick={onOpenAiTab} className="px-4 py-2 rounded-xl text-xs font-black bg-gradient-to-r from-amber-400 to-yellow-400 hover:from-amber-300 hover:to-yellow-300 text-slate-950 flex items-center gap-1.5 cursor-pointer shadow-lg shadow-amber-500/20">
-            Xem Phân Tích 4 Vé AI <ArrowRight className="w-3.5 h-3.5" />
+            Xem Bảng Xếp Hạng 16 AI <ArrowRight className="w-3.5 h-3.5" />
           </button>
         </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        {topRows.map((gr: any, idx: number) => {
-          const rowKey = `${gr.ticket_id || idx}-${gr.row_label}`;
-          const rowStr = (gr.numbers || []).map(fmtBall).join(" ") + (gr.special_number ? ` + ĐB:${fmtBall(gr.special_number)}` : "");
-          return (
-            <div key={rowKey} className="rounded-2xl bg-slate-950/90 border border-amber-400/50 p-4 md:p-5 flex flex-col justify-between gap-3.5 shadow-lg">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <span className="px-2.5 py-1 rounded-lg bg-gradient-to-r from-amber-400 to-yellow-300 text-slate-950 font-black text-xs">
-                  🎯 BỘ #{idx + 1} • {gr.row_label} ({gr.jackpot_gates_passed ?? 8}/8 CỔNG DNA • {gr.row_beauty_score ?? 99.5}đ)
-                </span>
-                <button onClick={() => copyText(rowKey, rowStr)} className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-[11px] font-bold text-slate-200 border border-slate-700 flex items-center gap-1 cursor-pointer">
-                  {copiedKey === rowKey ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
-                  {copiedKey === rowKey ? "Đã chép" : "Chép dãy"}
-                </button>
-              </div>
-              <div className="flex flex-wrap items-center gap-2.5 py-1">
-                {(gr.numbers || []).map((n: number) => (
-                  <span key={n} className="w-11 h-11 md:w-12 md:h-12 rounded-full bg-gradient-to-br from-amber-300 via-amber-400 to-amber-600 text-slate-950 font-black text-base md:text-lg flex items-center justify-center font-mono shadow-lg shadow-amber-500/30 ring-2 ring-amber-200/60">
-                    {fmtBall(n)}
-                  </span>
-                ))}
-                {gr.special_number && (
-                  <span className="w-11 h-11 md:w-12 md:h-12 rounded-full bg-emerald-400/20 border-2 border-emerald-400 text-emerald-300 font-black text-sm md:text-base flex items-center justify-center font-mono ml-1" title="Bóng Đặc Biệt Jackpot 2">
-                    +{fmtBall(gr.special_number)}
-                  </span>
-                )}
-              </div>
-              <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-800/90 text-[11px] text-slate-300 font-mono">
-                <span className="text-emerald-300 font-bold flex items-center gap-1">
-                  <ShieldCheck className="w-3.5 h-3.5" /> AC={gr.ac_value ?? 10}/10 • {gr.primes_count ?? 2} Nguyên tố • {gr.distinct_last_digits ?? 6}/6 Đuôi
-                </span>
-                <span>Tổng <b className="text-amber-300">{gr.sum}</b> • {gr.parity || "3C : 3L"} • {gr.low_high_ratio || "3T : 3C"}</span>
-              </div>
-            </div>
-          );
-        })}
+        {topRows.map((gr: any, idx: number) => (
+          <GoldenSignalRowCard
+            key={`${gr.ticket_id || idx}-${gr.row_label}`}
+            gr={gr}
+            idx={idx}
+            copiedKey={copiedKey}
+            onCopy={copyText}
+          />
+        ))}
       </div>
     </div>
   );

@@ -1,7 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
-import { API_BASE_URL } from "@/config/api";
+import React, { useState, useCallback } from "react";
 import { Header } from "@/components/Header";
 import { LatestDrawBanner } from "@/components/LatestDrawBanner";
 import { NextDrawCountdown } from "@/components/NextDrawCountdown";
@@ -14,48 +13,22 @@ import { NextDrawComparisonModal } from "@/components/NextDrawComparisonModal";
 import { Disclaimer } from "@/components/Disclaimer";
 import { MobileTabsBar } from "@/components/home/MobileTabsBar";
 import { AnalyticsSection } from "@/components/home/AnalyticsSection";
+import { useHomeLiveDraw } from "@/components/home/useHomeLiveDraw";
 
 export default function HomePage() {
   const [selectedGame, setSelectedGame] = useState<string>("mega_6_45");
   const [activeTab, setActiveTab] = useState<string>("analytics");
-  const [latestDraw, setLatestDraw] = useState<any>(null);
-  const [hotColdData, setHotColdData] = useState<any>(null);
-  const [, setLoading] = useState<boolean>(true);
   const [backtestNumbers, setBacktestNumbers] = useState<number[] | null>(null);
   const [ticketsRefreshTrigger, setTicketsRefreshTrigger] = useState<number>(0);
 
-  const fetchData = async (gameCode: string) => {
-    setLoading(true);
-    try {
-      const drawRes = await fetch(
-        `${API_BASE_URL}/api/v1/draws/latest?game_code=${gameCode}`
-      );
-      const drawJson = await drawRes.json();
-      if (drawJson.success) {
-        setLatestDraw(drawJson.data);
-      }
-
-      const hcRes = await fetch(
-        `${API_BASE_URL}/api/v1/analytics/hot-cold?game_code=${gameCode}&window_size=100`
-      );
-      const hcJson = await hcRes.json();
-      if (hcJson.success) {
-        setHotColdData(hcJson.data);
-      }
-    } catch (e) {
-      console.error("Fetch data error:", e);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    fetchData(selectedGame);
-  }, [selectedGame]);
-
-  const triggerTicketsRefresh = () => {
+  const triggerTicketsRefresh = useCallback(() => {
     setTicketsRefreshTrigger((prev) => prev + 1);
-  };
+  }, []);
+
+  const { latestDraw, hotColdData, fetchData } = useHomeLiveDraw(
+    selectedGame,
+    triggerTicketsRefresh
+  );
 
   return (
     <div className="min-h-screen flex flex-col bg-slate-950">
@@ -79,6 +52,7 @@ export default function HomePage() {
             gameCode={selectedGame}
             refreshTrigger={ticketsRefreshTrigger}
             onOpenAiTab={() => setActiveTab("ai_learning")}
+            onChampionUpgraded={triggerTicketsRefresh}
           />
         </div>
 
@@ -122,6 +96,7 @@ export default function HomePage() {
           <section className="space-y-8 animate-in fade-in duration-300">
             <WinningHistoryTracker
               gameCode={selectedGame}
+              refreshTrigger={ticketsRefreshTrigger}
               onNavigateToGenerator={() => setActiveTab("generator")}
               onNavigateToTickets={() => setActiveTab("tickets")}
             />

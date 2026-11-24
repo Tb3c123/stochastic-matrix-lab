@@ -1,13 +1,14 @@
 from typing import Any, Dict, List, Tuple
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, case
 
 from app.database import get_db_session
 from app.models.ticket import SavedTicket
 from app.schemas.common import ResponseEnvelope, ErrorDetail
 from app.analytics.bandit import compute_ucb1_arm_scores
 from app.services.hunt_jackpot_champion import read_hunter_status
+from app.services.alpha_ticket_builder import is_upcoming_draw_locked
 from app.analytics.hybrid_learning import (
     get_or_create_learning_state, execute_auto_cycle_pipeline,
     get_current_escalation_level, ESCALATION_LADDER,
@@ -92,9 +93,17 @@ async def get_auto_cycle_status(game_code: str = Query("mega_6_45"), db: AsyncSe
     state = await get_or_create_learning_state(db, game_code)
     current_level = get_current_escalation_level(state)
     escalation_info = ESCALATION_LADDER.get(current_level, ESCALATION_LADDER[0])
+    evo_info = read_hunter_status().get(game_code)
+    locked_now = is_upcoming_draw_locked(game_code)
     res = await db.execute(
-        select(SavedTicket).where(SavedTicket.game_code == game_code, SavedTicket.strategy == "hybrid_ai_learned")
-        .order_by(SavedTicket.id.desc()).limit(16)
+        select(SavedTicket)
+        .where(SavedTicket.game_code == game_code, SavedTicket.strategy == "hybrid_ai_learned")
+        .order_by(
+            case((SavedTicket.status == "pending", 0), else_=1).asc(),
+            SavedTicket.target_draw_period.desc(),
+            SavedTicket.id.desc(),
+        )
+        .limit(16)
     )
     batch, golden_rows, best_ai, latest_ticket, has_signal = _build_latest_tickets_batch(game_code, list(res.scalars().all()))
     return ResponseEnvelope(success=True, data={
@@ -103,7 +112,9 @@ async def get_auto_cycle_status(game_code: str = Query("mega_6_45"), db: AsyncSe
         "total_cycles_learned": state.total_cycles_learned, "recent_accuracy_rate": state.recent_accuracy_rate,
         "bandit_cumulative_reward": state.bandit_cumulative_reward,
         "ucb1_arm_scores": compute_ucb1_arm_scores(state.learning_logs),
-        "evo_hunter": read_hunter_status().get(game_code),
+        "evo_hunter": evo_info,
+        "champion_version": (evo_info or {}).get("champion_version", 0),
+        "is_draw_locked": locked_now,
         "escalation_level": current_level, "escalation_info": escalation_info,
         "escalation_ladder": list(ESCALATION_LADDER.values()),
         "weights": {"w_lateness": state.w_lateness, "w_gauss_sum": state.w_gauss_sum, "w_hot": state.w_hot, "w_parity": state.w_parity},

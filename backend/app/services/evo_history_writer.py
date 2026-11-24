@@ -49,9 +49,9 @@ async def persist_champion_history_tickets(
         )
     )
 
-    tier_txt = "6/6 ĐỘC ĐẮC" if champ.get("match_6", 0) > 0 else (
-        "5+1 JACKPOT 2" if champ.get("jackpot_2", 0) > 0 else f"{champ['best_hit'].get('match_count', 3)}/6 số"
-    )
+    freq_pct = champ.get("hit_frequency_pct", 0.0)
+    win_d = champ.get("winning_draws", 0)
+    tot_d = champ.get("draws_total", len(traces))
     saved_count = 0
 
     for tr in traces:
@@ -76,7 +76,7 @@ async def persist_champion_history_tickets(
                 "batch_ticket_total": ticket_chunks,
                 "auto_generated_by_ai": True,
                 "champion_epoch": epoch,
-                "strategy_name_override": f"🧬 Lần Chạy Vô Địch #{epoch} ({tier_txt}) • {vp['variant_code']}",
+                "strategy_name_override": f"🏆 Cá Thể Alpha Đời #{epoch} (Nổ {freq_pct}% • {win_d}/{tot_d} kỳ) • {vp['variant_code']}",
             }
             saved_ticket, _ = evaluate_and_build_ticket_record(
                 game_code=game_code,

@@ -11,11 +11,13 @@ import { WinningEmptyState } from "./winning-history/WinningEmptyState";
 
 interface WinningHistoryTrackerProps {
   gameCode: string;
+  refreshTrigger?: number;
   onNavigateToGenerator?: () => void;
   onNavigateToTickets?: () => void;
 }
 
 export const WinningHistoryTracker: React.FC<WinningHistoryTrackerProps> = ({
+  refreshTrigger = 0,
   onNavigateToGenerator,
   onNavigateToTickets
 }) => {
@@ -35,7 +37,7 @@ export const WinningHistoryTracker: React.FC<WinningHistoryTrackerProps> = ({
     megaWinCount,
     powerWinCount,
     fetchWinningHistory
-  } = useWinningHistory(selectedGameFilter, selectedTierFilter);
+  } = useWinningHistory(selectedGameFilter, selectedTierFilter, refreshTrigger);
 
   const handleSelectWinningTicket = (ticketId: number) => {
     setExpandedId(ticketId);

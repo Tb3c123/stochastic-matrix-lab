@@ -1,22 +1,15 @@
 import asyncio
 import json
-import logging
 import time
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict
-from sqlalchemy import select
+from typing import Any, Dict, Optional
 
-from app.database import AsyncSessionLocal
-from app.models.game import LotteryGame
-from app.models.draw import DrawResult
-from app.models.ticket import SavedTicket
-from app.analytics.evo_engine import precompute_window_tensors, mutate_genome, evaluate_genome_fast
-from app.analytics.hybrid_learning import get_or_create_learning_state, generate_hybrid_ticket_rows_with_special
-from app.analytics.hybrid_policy import TICKET_VARIANT_PROFILES, get_current_escalation_level
-from app.services.evo_history_writer import persist_champion_history_tickets
+from app.analytics.evo_engine import precompute_window_tensors
+from app.analytics.tournament_league import seed_initial_population, run_tournament_generation
+from app.services.alpha_ticket_builder import is_upcoming_draw_locked
+from app.services.evo_persistence import load_game_draws_and_seed, persist_alpha_record
 
-logger = logging.getLogger("EvoJackpotHunter")
 STATUS_PATH = Path("/tmp/evo_hunter_status.json")
 _ACTIVE_STATE: Dict[str, Dict[str, Any]] = {}
 _HUNTER_LOCK = asyncio.Lock()
@@ -37,110 +30,81 @@ def _flush_status() -> None:
     STATUS_PATH.write_text(json.dumps(_ACTIVE_STATE, ensure_ascii=False), encoding="utf-8")
 
 
-async def _persist_champion_to_db(
-    game_code: str, epoch: int, days_back: int, champ: Dict[str, Any], save_history: bool = False
-) -> int:
-    from app.routers.tickets import compute_next_draw_date, compute_single_row_jackpot_forecast, compute_ticket_beauty_evaluation
-
-    saved_hist_cnt = 0
-    async with AsyncSessionLocal() as db:
-        state = await get_or_create_learning_state(db, game_code)
-        g, bh = champ["genome"], champ["best_hit"]
-        state.w_hot, state.w_lateness, state.w_gauss_sum, state.w_parity = g["w_hot"], g["w_lateness"], g["w_gauss_sum"], g["w_parity"]
-        tier_txt = "6/6 ĐỘC ĐẮC" if champ["match_6"] > 0 else ("5+1 JACKPOT 2" if champ["jackpot_2"] > 0 else f"{bh['match_count']}/6 số")
-        esc = get_current_escalation_level(state)
-        log_item = {
-            "timestamp": datetime.utcnow().isoformat(), "draw_period": bh.get("draw_period") or state.last_learned_draw_period or "EVO",
-            "draw_date": bh.get("draw_date") or datetime.utcnow().strftime("%Y-%m-%d"), "winning_numbers": bh.get("winning_numbers", []),
-            "policy_action": f"🧬 Đột biến Vòng #{epoch} ({days_back} ngày): Chốt kỷ lục {tier_txt}",
-            "cycle_reward": 0.0, "escalation_level": esc, "target_ticket_count": esc + 1,
-            "feedback_summary": f"🧬 [SĂN NGẦM #{epoch}]: Đạt {tier_txt} (6/6:{champ['match_6']}, JP2:{champ['jackpot_2']}, 5/6:{champ['match_5']}, 4/6:{champ['match_4']}, 3/6:{champ['match_3']}).",
-            "weights": {"lateness": state.w_lateness, "hot": state.w_hot, "gauss_sum": state.w_gauss_sum, "parity": state.w_parity}, "bandit_reward": state.bandit_cumulative_reward,
-        }
-        state.learning_logs = (list(state.learning_logs or []) + [log_item])[-20:]
-        await db.commit()
-
-        if save_history:
-            saved_hist_cnt = await persist_champion_history_tickets(db, game_code, epoch, champ)
-
-        game = (await db.execute(select(LotteryGame).where(LotteryGame.code == game_code))).scalar_one_or_none()
-        latest = (await db.execute(select(DrawResult).where(DrawResult.game_id == game.id).order_by(DrawResult.draw_period.desc()).limit(1))).scalar_one_or_none() if game else None
-        if game and latest:
-            curr_num = int(latest.draw_period.replace("#", "")) if latest.draw_period.isdigit() else 1500
-            target_period = f"{curr_num + 1:05d}"
-            target_date = compute_next_draw_date(game_code, datetime.strptime(latest.draw_date, "%Y-%m-%d"))
-            rows, specials = await generate_hybrid_ticket_rows_with_special(db, game_code, variant_index=0)
-            row_fcs = [compute_single_row_jackpot_forecast(game_code, r, special_number=specials[i]) for i, r in enumerate(rows)]
-            if compute_ticket_beauty_evaluation(game_code, rows, row_fcs, "hybrid_ai_learned").get("has_golden_signal"):
-                pa = {
-                    "strategy_info": {"strategy_code": "hybrid_ai_learned", "strategy_name": f"🧬 Bộ Vô Địch #{epoch} ({tier_txt})", "category": "Tiến Hóa Đột Biến Săn Độc Đắc", "historical_accuracy_pct": state.recent_accuracy_rate, "confidence_rating": "S++", "algorithm_score": 96.5},
-                    "ticket_variant": {**TICKET_VARIANT_PROFILES[0], "variant_name": f"🧬 Vé Vô Địch #{epoch} ({tier_txt})"},
-                    "escalation_level": esc, "row_forecasts": row_fcs, "valid_rows_count": 5, "auto_generated_by_ai": True,
-                }
-                db.add(SavedTicket(game_code=game_code, strategy="hybrid_ai_learned", target_draw_period=target_period, target_draw_date=target_date, rows_data=rows, predicted_analysis=pa, status="pending"))
-                await db.commit()
-    return saved_hist_cnt
-
-
-async def hunt_for_game(game_code: str, days_back: int = 90, max_epochs: int = 250000, sleep_sec: float = 0.015) -> Dict[str, Any]:
-    async with AsyncSessionLocal() as db:
-        game = (await db.execute(select(LotteryGame).where(LotteryGame.code == game_code))).scalar_one_or_none()
-        if not game:
-            return {"ok": False, "error": "game_not_found"}
-        draws = list((await db.execute(select(DrawResult).where(DrawResult.game_id == game.id).order_by(DrawResult.draw_period.asc()))).scalars().all())
-        if len(draws) < 140:
-            from app.crawler.manager import CrawlerManager
-            await CrawlerManager(db).seed_historical_data(game_code, limit=220)
-            draws = list((await db.execute(select(DrawResult).where(DrawResult.game_id == game.id).order_by(DrawResult.draw_period.asc()))).scalars().all())
-        state = await get_or_create_learning_state(db, game_code)
-        parent = {"w_hot": state.w_hot, "w_lateness": state.w_lateness, "w_gauss_sum": state.w_gauss_sum, "w_parity": state.w_parity, "w_markov": 0.20}
-
+async def hunt_for_game(
+    game_code: str, days_back: int = 90, max_epochs: int = 0, sleep_sec: Optional[float] = None,
+) -> Dict[str, Any]:
+    game, draws, base_w = await load_game_draws_and_seed(game_code)
+    if not game:
+        return {"ok": False, "error": "game_not_found"}
     is_power = game_code == "power_6_55"
     tensors = precompute_window_tensors(draws, game.max_number, days_back=days_back, is_power=is_power)
     if not tensors:
         return {"ok": False, "error": "insufficient_draws"}
 
-    champion = evaluate_genome_fast(parent, tensors, game.max_number, is_power=is_power)
-    last_saved = (champion["match_6"], champion["jackpot_2"], champion["match_5"])
+    latest_period = draws[-1].draw_period
+    population = seed_initial_population(base_w, pop_size=16)
+    best_sig = (-1.0, -1.0, -1.0)
+    champ_version = int(_ACTIVE_STATE.get(game_code, {}).get("champion_version", 0))
+    saved_hist_cnt = int(_ACTIVE_STATE.get(game_code, {}).get("saved_history_tickets", 0))
+    stagnation = total_culled = gen = 0
     t0 = last_flush = time.monotonic()
-    final_epoch = 1
+    infinite = max_epochs <= 0
 
-    for epoch in range(1, max_epochs + 1):
-        final_epoch = epoch
-        res = evaluate_genome_fast(mutate_genome(champion["genome"], sigma=0.07 if epoch % 5 != 0 else 0.14), tensors, game.max_number, is_power=is_power)
-        if res["fitness"] > champion["fitness"]:
-            champion = res
-            curr_tier = (champion["match_6"], champion["jackpot_2"], champion["match_5"])
-            if curr_tier > last_saved and champion["match_6"] == 0:
-                last_saved = curr_tier
-                await _persist_champion_to_db(game_code, epoch, days_back, champion, save_history=False)
+    while infinite or gen < max_epochs:
+        gen += 1
+        if infinite and gen % 60 == 0:
+            _, fresh_draws, _ = await load_game_draws_and_seed(game_code)
+            if fresh_draws and fresh_draws[-1].draw_period != latest_period:
+                latest_period = fresh_draws[-1].draw_period
+                tensors = precompute_window_tensors(fresh_draws, game.max_number, days_back=days_back, is_power=is_power)
+                for b in population:
+                    b["eval"] = None
+                best_sig = (-1.0, -1.0, -1.0)
 
+        out = run_tournament_generation(population, tensors, game.max_number, is_power, gen, stagnation_gens=stagnation)
+        champ_bot = out["champion"]
+        ev = champ_bot["eval"]
+        total_culled += out["culled_count"]
+        cur_sig = (ev["fitness"], ev["hit_frequency_pct"], ev["holdout_frequency_pct"])
+
+        if cur_sig > best_sig:
+            best_sig = cur_sig
+            stagnation = 0
+            champ_version += 1
+            top_valid = sorted([b for b in population if b.get("eval")], key=lambda x: x["eval"]["fitness"], reverse=True)[:3] or [champ_bot]
+            p_res = await persist_alpha_record(game_code, gen, champ_bot, top_valid)
+            saved_hist_cnt = p_res["saved_history"]
+        else:
+            stagnation += 1
+
+        population = out["next_population"]
         now = time.monotonic()
-        if now - last_flush >= 2.0 or champion["match_6"] >= 1 or epoch == max_epochs:
+        is_running = infinite or (gen < max_epochs)
+        if now - last_flush >= 2.0 or not is_running or stagnation == 0:
             _ACTIVE_STATE[game_code] = {
-                "running": champion["match_6"] < 1 and epoch < max_epochs, "days_back": days_back,
-                "draws_in_window": len(tensors), "epochs_done": epoch, "max_epochs": max_epochs,
-                "epochs_per_sec": round(epoch / max(0.01, now - t0), 1),
-                "champion_weights": champion["genome"], "fitness": champion["fitness"],
-                "match_6": champion["match_6"], "jackpot_2": champion["jackpot_2"],
-                "match_5": champion["match_5"], "match_4": champion["match_4"], "match_3": champion["match_3"],
-                "best_hit": champion["best_hit"], "updated_at": datetime.utcnow().isoformat(),
+                "running": is_running, "mode": "cruise" if ev["hit_frequency_pct"] >= 70.0 else "sprint",
+                "days_back": days_back, "draws_in_window": len(tensors), "generation": gen, "epochs_done": gen,
+                "max_epochs": max_epochs, "epochs_per_sec": round(gen / max(0.01, now - t0), 2),
+                "champion_version": champ_version, "is_draw_locked": is_upcoming_draw_locked(game_code),
+                "target_frequency_pct": 70.0, "champion_name": champ_bot["bot_name"], "champion_age": champ_bot["age"],
+                "champion_weights": champ_bot["genome"], "fitness": ev["fitness"],
+                "hit_frequency_pct": ev["hit_frequency_pct"], "holdout_frequency_pct": ev["holdout_frequency_pct"],
+                "winning_draws": ev["winning_draws"], "max_drought": ev["max_drought"], "multi_hit_draws": ev["multi_hit_draws"],
+                "total_culled": total_culled, "stagnation_gens": stagnation,
+                "match_6": ev["match_6"], "jackpot_2": ev["jackpot_2"], "match_5": ev["match_5"], "match_4": ev["match_4"], "match_3": ev["match_3"],
+                "best_hit": ev["best_hit"], "leaderboard": out["leaderboard"],
+                "saved_history_tickets": saved_hist_cnt, "updated_at": datetime.utcnow().isoformat(),
             }
             _flush_status()
             last_flush = now
 
-        if champion["match_6"] >= 1:
-            break
-        if epoch % 20 == 0 and sleep_sec > 0:
-            await asyncio.sleep(sleep_sec)
-
-    hist_cnt = await _persist_champion_to_db(game_code, final_epoch, days_back, champion, save_history=True)
-    _ACTIVE_STATE[game_code]["saved_history_tickets"] = hist_cnt
-    _flush_status()
+        pause = sleep_sec if sleep_sec is not None else (0.28 if ev["hit_frequency_pct"] >= 70.0 else 0.04)
+        if pause > 0:
+            await asyncio.sleep(pause)
     return _ACTIVE_STATE.get(game_code, {})
 
 
-async def run_autonomous_hunter_daemon(days_back: int = 90, max_epochs: int = 250000) -> None:
+async def run_autonomous_hunter_daemon(days_back: int = 90, max_epochs: int = 0) -> None:
     if _HUNTER_LOCK.locked():
         return
     async with _HUNTER_LOCK:

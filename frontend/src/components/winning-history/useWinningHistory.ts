@@ -4,7 +4,8 @@ import { DEFAULT_WINNING_SUMMARY } from "./formatters";
 
 export function useWinningHistory(
   selectedGameFilter: string,
-  selectedTierFilter: string
+  selectedTierFilter: string,
+  refreshTrigger = 0
 ) {
   const [historyData, setHistoryData] = useState<any>(null);
   const [loading, setLoading] = useState<boolean>(true);
@@ -30,7 +31,7 @@ export function useWinningHistory(
 
   useEffect(() => {
     fetchWinningHistory();
-  }, [selectedGameFilter, selectedTierFilter]);
+  }, [selectedGameFilter, selectedTierFilter, refreshTrigger]);
 
   const summary = historyData?.summary || DEFAULT_WINNING_SUMMARY;
   const rowCostVnd = summary.row_cost_vnd || 10000;

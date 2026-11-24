@@ -48,9 +48,9 @@ async def lifespan(app: FastAPI):
     except Exception:
         logger.exception("Startup auto-seed failed; continuing with existing DB state")
 
-    # Start automated 10:00 AM daily scheduler & autonomous background 90-day Jackpot Hunter
+    # Start automated 10:00 AM daily scheduler & autonomous 24/7 Darwinian Frequency Tournament
     worker_task = asyncio.create_task(auto_cycle_worker())
-    hunter_task = asyncio.create_task(run_autonomous_hunter_daemon(days_back=90, max_epochs=250000))
+    hunter_task = asyncio.create_task(run_autonomous_hunter_daemon(days_back=90, max_epochs=0))
     yield
     for t in (worker_task, hunter_task):
         t.cancel()

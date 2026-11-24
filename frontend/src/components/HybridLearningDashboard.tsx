@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { API_BASE_URL } from "@/config/api";
 import { Cpu } from "lucide-react";
 import {
@@ -8,6 +8,7 @@ import {
   DEFAULT_ESCALATION_LADDER,
   EscalationStep
 } from "./hybrid-learning/types";
+import { TournamentArenaBoard } from "./hybrid-learning/TournamentArenaBoard";
 import { EscalationLadderBar } from "./hybrid-learning/EscalationLadderBar";
 import { AdaptiveWeightsGrid } from "./hybrid-learning/AdaptiveWeightsGrid";
 import { AiTicketRowsPanel } from "./hybrid-learning/AiTicketRowsPanel";
@@ -19,41 +20,59 @@ interface HybridLearningProps {
 }
 
 export const HybridLearningDashboard: React.FC<HybridLearningProps> = ({
-  gameCode
+  gameCode,
+  onTicketGenerated
 }) => {
   const [statusData, setStatusData] = useState<any>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [activeTicketIdx, setActiveTicketIdx] = useState<number>(0);
+  const champVerRef = useRef<number | null>(null);
 
   useEffect(() => {
-    const fetchStatus = async () => {
-      setLoading(true);
+    let mounted = true;
+    champVerRef.current = null;
+    setLoading(true);
+
+    const fetchStatus = async (initial = false) => {
+      if (!initial && typeof document !== "undefined" && document.hidden) return;
       try {
         const res = await fetch(
           `${API_BASE_URL}/api/v1/auto-cycle/status?game_code=${gameCode}`
         );
         const json = await res.json();
-        if (json.success && json.data) {
+        if (mounted && json.success && json.data) {
           setStatusData(json.data);
-          const batch: any[] = json.data.latest_ai_tickets || [];
-          const bestIdx = batch.findIndex((t: any) => t.is_best_ai_ticket);
-          setActiveTicketIdx(bestIdx >= 0 ? bestIdx : 0);
+          const newVer = Number(json.data.champion_version || 0);
+          if (champVerRef.current !== null && newVer > champVerRef.current) {
+            onTicketGenerated?.();
+          }
+          champVerRef.current = newVer;
+          if (initial) {
+            const batch: any[] = json.data.latest_ai_tickets || [];
+            const bestIdx = batch.findIndex((t: any) => t.is_best_ai_ticket);
+            setActiveTicketIdx(bestIdx >= 0 ? bestIdx : 0);
+          }
         }
       } catch (e) {
         console.error("Fetch auto cycle status failed:", e);
       } finally {
-        setLoading(false);
+        if (mounted && initial) setLoading(false);
       }
     };
 
-    fetchStatus();
-  }, [gameCode]);
+    fetchStatus(true);
+    const timer = setInterval(() => fetchStatus(false), 5000);
+    return () => {
+      mounted = false;
+      clearInterval(timer);
+    };
+  }, [gameCode, onTicketGenerated]);
 
   if (loading || !statusData) return null;
 
   const weights = statusData.weights || DEFAULT_WEIGHTS;
   const latestAiTickets: any[] =
-    statusData.latest_ai_tickets && statusData.latest_ai_tickets.length > 0
+    statusData.latest_ai_tickets?.length > 0
       ? statusData.latest_ai_tickets
       : statusData.latest_ai_ticket
         ? [statusData.latest_ai_ticket]
@@ -80,36 +99,21 @@ export const HybridLearningDashboard: React.FC<HybridLearningProps> = ({
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pb-6 border-b border-slate-800">
         <div>
           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider bg-amber-500/10 text-amber-400 border border-amber-500/20 mb-2">
-            <Cpu className="w-3.5 h-3.5" /> Hệ Thống Tự Hành 100% • Nấc Thang
-            Bậc 0 ↔ Bậc 3 (Không Reset Cứng)
+            <Cpu className="w-3.5 h-3.5" /> Hệ Thống Tự Hành 100% • Đồng Bộ Trực Tiếp 5 Giây
           </div>
-          <h3 className="text-2xl font-bold text-white flex items-center gap-2">
-            Cỗ Máy AI Tự Học & Săn Độc Đắc Theo Nấc Thang
+          <h3 className="text-2xl font-bold text-white">
+            Đấu Trường Tiến Hóa AI & Kết Tinh Vé Tần Suất Cao
           </h3>
           <p className="text-xs md:text-sm text-slate-400 mt-1">
-            Vận hành tự động hoàn toàn: <b>19:10</b> ngày quay tự cào kết quả &
-            đối soát; <b>10:00 sáng</b> tự học theo cơ chế{" "}
-            <i>Tiến/Lùi Từng Bậc</i> (Trượt tiến +1 bậc tăng phạt & thêm vé; Có
-            giải phụ chỉ lùi -1 bậc để giữ đà bao vây).
+            <b>17:45</b> tự khóa chốt vé kỳ quay; <b>18:35</b> tự cào kết quả & chấm điểm; <b>24/7</b> đấu loại 16 cá thể tìm công thức nổ đều nhất.
           </p>
         </div>
-
-        <div className="flex flex-wrap items-center gap-2.5">
-          <div className="bg-slate-800/90 border border-emerald-500/30 px-3.5 py-2 rounded-xl flex items-center gap-2 shadow-sm">
-            <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse"></span>
-            <span className="text-xs font-semibold text-slate-300">
-              Cào & Đối soát: <b className="text-emerald-400">19:10 Ngày Xổ</b>
-            </span>
-          </div>
-          <div className="bg-slate-800/90 border border-violet-500/30 px-3.5 py-2 rounded-xl flex items-center gap-2 shadow-sm">
-            <span className="w-2.5 h-2.5 rounded-full bg-violet-400 animate-pulse"></span>
-            <span className="text-xs font-semibold text-slate-300">
-              AI Sinh vé mới:{" "}
-              <b className="text-violet-300">10:00 Sáng Hàng Ngày</b>
-            </span>
-          </div>
-        </div>
       </div>
+
+      <TournamentArenaBoard
+        evo={statusData.evo_hunter}
+        isDrawLocked={!!statusData.is_draw_locked}
+      />
 
       <EscalationLadderBar
         gameCode={gameCode}
