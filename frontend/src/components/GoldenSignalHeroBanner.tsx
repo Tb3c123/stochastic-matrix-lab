@@ -1,46 +1,16 @@
 "use client";
 
-import React, { useState, useEffect, useRef } from "react";
-import { API_BASE_URL } from "@/config/api";
-import { Sparkles, Copy, Check, ArrowRight, Dna, Lock } from "lucide-react";
+import React, { useState } from "react";
+import { Sparkles, Copy, Check, Dna, Lock } from "lucide-react";
 import { GoldenSignalRowCard } from "./home/GoldenSignalRowCard";
 
 const fmtBall = (n: number) => (n < 10 ? `0${n}` : `${n}`);
 
 export const GoldenSignalHeroBanner: React.FC<{
   gameCode: string;
-  refreshTrigger?: number;
-  onOpenAiTab: () => void;
-  onChampionUpgraded?: () => void;
-}> = ({ gameCode, refreshTrigger = 0, onOpenAiTab, onChampionUpgraded }) => {
-  const [statusData, setStatusData] = useState<any>(null);
+  statusData: any;
+}> = ({ gameCode, statusData }) => {
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
-  const verRef = useRef<number | null>(null);
-
-  useEffect(() => {
-    let mounted = true;
-    const load = (force = false) => {
-      if (!force && typeof document !== "undefined" && document.hidden) return;
-      fetch(`${API_BASE_URL}/api/v1/auto-cycle/status?game_code=${gameCode}`)
-        .then((r) => r.json())
-        .then((j) => {
-          if (!mounted || !j.success || !j.data) return;
-          setStatusData(j.data);
-          const nv = Number(j.data.champion_version || 0);
-          if (verRef.current !== null && nv > verRef.current) {
-            onChampionUpgraded?.();
-          }
-          verRef.current = nv;
-        })
-        .catch(() => {});
-    };
-    load(true);
-    const timer = setInterval(() => load(false), 5000);
-    return () => {
-      mounted = false;
-      clearInterval(timer);
-    };
-  }, [gameCode, refreshTrigger, onChampionUpgraded]);
 
   if (!statusData) return null;
 
@@ -53,8 +23,10 @@ export const GoldenSignalHeroBanner: React.FC<{
       : tickets.slice(0, 2).flatMap((t: any) =>
           (t.row_forecasts || [])
             .map((fc: any, idx: number) => ({
-              ...fc, row_label: `Dãy ${String.fromCharCode(65 + idx)}`,
-              variant_name: t.variant_name, target_draw_period: t.target_draw_period,
+              ...fc,
+              row_label: `Dãy ${String.fromCharCode(65 + idx)}`,
+              variant_name: t.variant_name,
+              target_draw_period: t.target_draw_period,
               target_draw_date: t.target_draw_date,
               sum: (fc.numbers || []).reduce((a: number, b: number) => a + b, 0),
             }))
@@ -75,7 +47,12 @@ export const GoldenSignalHeroBanner: React.FC<{
 
   const handleCopyAll = () => {
     const allText = topRows
-      .map((r: any, i: number) => `#${i + 1} (${r.row_label}): ${(r.numbers || []).map(fmtBall).join(" ")}${r.special_number ? ` + ĐB:${fmtBall(r.special_number)}` : ""}`)
+      .map(
+        (r: any, i: number) =>
+          `#${i + 1} (${r.row_label}): ${(r.numbers || []).map(fmtBall).join(" ")}${
+            r.special_number ? ` + ĐB:${fmtBall(r.special_number)}` : ""
+          }`
+      )
       .join("\n");
     copyText("ALL", allText);
   };
@@ -87,7 +64,9 @@ export const GoldenSignalHeroBanner: React.FC<{
           <div className="flex flex-wrap items-center gap-2">
             <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-black uppercase tracking-wider bg-gradient-to-r from-amber-400 to-yellow-300 text-slate-950 shadow-md">
               <Sparkles className="w-3.5 h-3.5" />
-              {isPerfect8 ? `TINH HOA ALPHA • ${goldenRows.length} DÃY ĐẠT 8/8 CỔNG DNA` : "BỘ SỐ KẾT TINH TỪ NHÀ VÔ ĐỊCH TẦN SUẤT"}
+              {isPerfect8
+                ? `TINH HOA ALPHA • ${goldenRows.length} DÃY ĐẠT 8/8 CỔNG DNA`
+                : "BỘ DÃY SỐ KẾT TINH TỪ NHÀ VÔ ĐỊCH TẦN SUẤT"}
             </span>
             <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-500/15 text-emerald-300 border border-emerald-400/30">
               Kỳ #{period} • {drawDate} (18:00)
@@ -95,7 +74,7 @@ export const GoldenSignalHeroBanner: React.FC<{
             {evo?.generation && (
               <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold bg-violet-500/20 text-violet-200 border border-violet-400/40">
                 <Dna className={`w-3.5 h-3.5 text-violet-300 ${evo.running ? "animate-spin" : ""}`} />
-                Giải đấu Đời #{evo.generation.toLocaleString()} • Nổ {evo.winning_draws}/{evo.draws_in_window} kỳ ({evo.hit_frequency_pct}%) • Max trượt {evo.max_drought} kỳ
+                Đời #{evo.generation.toLocaleString()} • Nổ {evo.winning_draws}/{evo.draws_in_window} kỳ ({evo.hit_frequency_pct}%) • Max trượt {evo.max_drought} kỳ
               </span>
             )}
             {statusData.is_draw_locked && (
@@ -105,18 +84,17 @@ export const GoldenSignalHeroBanner: React.FC<{
             )}
           </div>
           <h3 className="text-xl md:text-2xl font-extrabold text-white">
-            Bộ Dãy Số Đẹp Kỳ Sắp Tới ({gameCode === "power_6_55" ? "Power 6/55" : "Mega 6/45"} • v{statusData.champion_version || 1})
+            Bộ Dãy Số Đẹp Kỳ Sắp Tới ({gameCode === "power_6_55" ? "Power 6/55" : "Mega 6/45"} • Phiên bản Vua v{statusData.champion_version || 1})
           </h3>
         </div>
-        <div className="flex flex-wrap items-center gap-2.5">
-          <button onClick={handleCopyAll} className="px-3.5 py-2 rounded-xl text-xs font-black bg-amber-400/20 hover:bg-amber-400/30 text-amber-200 border border-amber-400/50 flex items-center gap-1.5 cursor-pointer transition-all">
-            {copiedKey === "ALL" ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
-            {copiedKey === "ALL" ? "Đã Chép Trọn Bộ!" : "Sao Chép Nguyên Bộ Số Đẹp"}
-          </button>
-          <button onClick={onOpenAiTab} className="px-4 py-2 rounded-xl text-xs font-black bg-gradient-to-r from-amber-400 to-yellow-400 hover:from-amber-300 hover:to-yellow-300 text-slate-950 flex items-center gap-1.5 cursor-pointer shadow-lg shadow-amber-500/20">
-            Xem Bảng Xếp Hạng 16 AI <ArrowRight className="w-3.5 h-3.5" />
-          </button>
-        </div>
+
+        <button
+          onClick={handleCopyAll}
+          className="px-4 py-2.5 rounded-xl text-xs font-black bg-gradient-to-r from-amber-400 to-yellow-300 hover:from-amber-300 hover:to-yellow-200 text-slate-950 flex items-center gap-1.5 cursor-pointer shadow-lg shadow-amber-500/20 shrink-0 self-start lg:self-center"
+        >
+          {copiedKey === "ALL" ? <Check className="w-4 h-4 text-emerald-700" /> : <Copy className="w-4 h-4" />}
+          {copiedKey === "ALL" ? "Đã Sao Chép Trọn Bộ!" : "Sao Chép Nguyên Bộ Số Đẹp"}
+        </button>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">

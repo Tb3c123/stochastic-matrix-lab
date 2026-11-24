@@ -9,48 +9,35 @@ interface MobileTabsBarProps {
 
 const MOBILE_TABS = [
   {
+    id: "ai_arena",
+    label: "🎯 Số Đẹp & AI",
+    activeCls: "bg-gradient-to-r from-amber-400 to-yellow-300 text-slate-950 font-black shadow-md",
+  },
+  {
+    id: "tickets_hub",
+    label: "🏆 Sổ Vé & Trúng",
+    activeCls: "bg-emerald-500 text-slate-950 font-black shadow-md",
+  },
+  {
     id: "analytics",
-    label: "📊 Biểu Đồ",
-    activeClass: "bg-blue-600 text-white shadow-md",
-    inactiveClass: "text-slate-400 hover:text-white bg-slate-800"
+    label: "📊 Cầu Số",
+    activeCls: "bg-sky-500 text-slate-950 font-black shadow-md",
   },
-  {
-    id: "generator",
-    label: "✨ Sinh Vé",
-    activeClass: "bg-amber-600 text-white shadow-md",
-    inactiveClass: "text-slate-400 hover:text-white bg-slate-800"
-  },
-  {
-    id: "tickets",
-    label: "📑 Sổ Vé",
-    activeClass: "bg-emerald-600 text-white shadow-md",
-    inactiveClass: "text-slate-400 hover:text-white bg-slate-800"
-  },
-  {
-    id: "ai_learning",
-    label: "🤖 AI Tự Học",
-    activeClass: "bg-violet-600 text-white shadow-md",
-    inactiveClass: "text-slate-400 hover:text-white bg-slate-800"
-  },
-  {
-    id: "winning_history",
-    label: "🏆 Lịch Sử Trúng",
-    activeClass: "bg-amber-500 text-slate-950 font-black shadow-md",
-    inactiveClass: "text-amber-400/90 hover:text-white bg-slate-800"
-  }
 ];
 
 export const MobileTabsBar: React.FC<MobileTabsBarProps> = ({
   activeTab,
-  onSelectTab
+  onSelectTab,
 }) => (
-  <div className="flex md:hidden bg-slate-900 border-b border-slate-800 p-2 overflow-x-auto gap-2 text-xs font-bold shrink-0">
+  <div className="grid grid-cols-3 md:hidden bg-slate-900/95 border-b border-slate-800 p-2 gap-1.5 text-xs font-bold">
     {MOBILE_TABS.map((tab) => (
       <button
         key={tab.id}
         onClick={() => onSelectTab(tab.id)}
-        className={`px-3 py-1.5 rounded-xl whitespace-nowrap transition-all ${
-          activeTab === tab.id ? tab.activeClass : tab.inactiveClass
+        className={`py-2 px-2 rounded-xl text-center transition-all cursor-pointer ${
+          activeTab === tab.id
+            ? tab.activeCls
+            : "text-slate-400 hover:text-white bg-slate-800/70"
         }`}
       >
         {tab.label}

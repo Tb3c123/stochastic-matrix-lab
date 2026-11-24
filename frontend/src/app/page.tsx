@@ -2,30 +2,24 @@
 
 import React, { useState, useCallback } from "react";
 import { Header } from "@/components/Header";
-import { LatestDrawBanner } from "@/components/LatestDrawBanner";
-import { NextDrawCountdown } from "@/components/NextDrawCountdown";
-import { GoldenSignalHeroBanner } from "@/components/GoldenSignalHeroBanner";
-import { SmartPickGenerator } from "@/components/SmartPickGenerator";
 import { HybridLearningDashboard } from "@/components/HybridLearningDashboard";
-import { SavedTicketsTracker } from "@/components/SavedTicketsTracker";
-import { WinningHistoryTracker } from "@/components/WinningHistoryTracker";
-import { NextDrawComparisonModal } from "@/components/NextDrawComparisonModal";
+import { UnifiedTicketsHub } from "@/components/UnifiedTicketsHub";
 import { Disclaimer } from "@/components/Disclaimer";
 import { MobileTabsBar } from "@/components/home/MobileTabsBar";
+import { CompactDrawStatusBar } from "@/components/home/CompactDrawStatusBar";
 import { AnalyticsSection } from "@/components/home/AnalyticsSection";
 import { useHomeLiveDraw } from "@/components/home/useHomeLiveDraw";
 
 export default function HomePage() {
   const [selectedGame, setSelectedGame] = useState<string>("mega_6_45");
-  const [activeTab, setActiveTab] = useState<string>("analytics");
-  const [backtestNumbers, setBacktestNumbers] = useState<number[] | null>(null);
+  const [activeTab, setActiveTab] = useState<string>("ai_arena");
   const [ticketsRefreshTrigger, setTicketsRefreshTrigger] = useState<number>(0);
 
   const triggerTicketsRefresh = useCallback(() => {
     setTicketsRefreshTrigger((prev) => prev + 1);
   }, []);
 
-  const { latestDraw, hotColdData, fetchData } = useHomeLiveDraw(
+  const { latestDraw, hotColdData } = useHomeLiveDraw(
     selectedGame,
     triggerTicketsRefresh
   );
@@ -41,77 +35,31 @@ export default function HomePage() {
 
       <MobileTabsBar activeTab={activeTab} onSelectTab={setActiveTab} />
 
-      <main className="flex-1 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 w-full space-y-8">
-        <div className="space-y-4">
-          <LatestDrawBanner draw={latestDraw} gameCode={selectedGame} />
-          <NextDrawCountdown
-            gameCode={selectedGame}
-            currentDrawPeriod={latestDraw?.draw_period}
-          />
-          <GoldenSignalHeroBanner
+      <main className="flex-1 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 w-full space-y-6">
+        <CompactDrawStatusBar draw={latestDraw} gameCode={selectedGame} />
+
+        {activeTab === "ai_arena" && (
+          <HybridLearningDashboard
             gameCode={selectedGame}
             refreshTrigger={ticketsRefreshTrigger}
-            onOpenAiTab={() => setActiveTab("ai_learning")}
             onChampionUpgraded={triggerTicketsRefresh}
           />
-        </div>
+        )}
+
+        {activeTab === "tickets_hub" && (
+          <UnifiedTicketsHub
+            gameCode={selectedGame}
+            refreshTrigger={ticketsRefreshTrigger}
+          />
+        )}
 
         {activeTab === "analytics" && (
           <AnalyticsSection
             selectedGame={selectedGame}
             hotColdData={hotColdData}
-            onRefresh={() => fetchData(selectedGame)}
           />
         )}
-
-        {activeTab === "generator" && (
-          <section className="space-y-8 animate-in fade-in duration-300">
-            <SmartPickGenerator
-              gameCode={selectedGame}
-              onRunBacktest={(nums) => setBacktestNumbers(nums)}
-              onTicketSaved={triggerTicketsRefresh}
-            />
-          </section>
-        )}
-
-        {activeTab === "tickets" && (
-          <section className="space-y-8 animate-in fade-in duration-300">
-            <SavedTicketsTracker
-              gameCode={selectedGame}
-              refreshTrigger={ticketsRefreshTrigger}
-            />
-          </section>
-        )}
-
-        {activeTab === "ai_learning" && (
-          <section className="space-y-8 animate-in fade-in duration-300">
-            <HybridLearningDashboard
-              gameCode={selectedGame}
-              onTicketGenerated={triggerTicketsRefresh}
-            />
-          </section>
-        )}
-
-        {activeTab === "winning_history" && (
-          <section className="space-y-8 animate-in fade-in duration-300">
-            <WinningHistoryTracker
-              gameCode={selectedGame}
-              refreshTrigger={ticketsRefreshTrigger}
-              onNavigateToGenerator={() => setActiveTab("generator")}
-              onNavigateToTickets={() => setActiveTab("tickets")}
-            />
-          </section>
-        )}
       </main>
-
-      {backtestNumbers && (
-        <NextDrawComparisonModal
-          numbers={backtestNumbers}
-          gameCode={selectedGame}
-          onClose={() => setBacktestNumbers(null)}
-          onSaveAndTrack={triggerTicketsRefresh}
-        />
-      )}
 
       <Disclaimer />
     </div>
