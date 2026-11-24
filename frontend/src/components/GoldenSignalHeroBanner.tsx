@@ -74,7 +74,7 @@ export const GoldenSignalHeroBanner: React.FC<{
             {evo?.generation && (
               <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold bg-violet-500/20 text-violet-200 border border-violet-400/40">
                 <Dna className={`w-3.5 h-3.5 text-violet-300 ${evo.running ? "animate-spin" : ""}`} />
-                Đời #{evo.generation.toLocaleString()} • Nổ {evo.winning_draws}/{evo.draws_in_window} kỳ ({evo.hit_frequency_pct}%) • Max trượt {evo.max_drought} kỳ
+                Đời #{evo.generation.toLocaleString()} • Đã khóa {evo.winning_draws}/{evo.draws_in_window} kỳ ĐỘC ĐẮC 6/6 ({evo.match_6} dãy 6/6)
               </span>
             )}
             {statusData.is_draw_locked && (

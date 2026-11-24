@@ -13,7 +13,7 @@ export const UnifiedTicketsHub: React.FC<{
   refreshTrigger: number;
 }> = ({ gameCode, refreshTrigger }) => {
   const [viewMode, setViewMode] = useState<"winning" | "pending" | "all">("winning");
-  const [tierFilter, setTierFilter] = useState<string>("all");
+  const [tierFilter, setTierFilter] = useState<string>("jackpot_6");
   const [expandedId, setExpandedId] = useState<number | null>(null);
   const [collapsedDates, setCollapsedDates] = useState<Record<string, boolean>>({});
   const [openRowAudits, setOpenRowAudits] = useState<Record<string, boolean>>({});
@@ -37,7 +37,7 @@ export const UnifiedTicketsHub: React.FC<{
   }
 
   const modeTabs = [
-    { id: "winning" as const, icon: Trophy, label: `Các Kỳ Đã Trúng (${winningTickets.length})`, activeCls: "bg-gradient-to-r from-amber-400 to-yellow-300 text-slate-950 font-black shadow-md" },
+    { id: "winning" as const, icon: Trophy, label: `Các Kỳ Độc Đắc 6/6 (${winningTickets.length})`, activeCls: "bg-gradient-to-r from-amber-400 to-yellow-300 text-slate-950 font-black shadow-md" },
     { id: "pending" as const, icon: Clock, label: `Vé Chờ Quay Kỳ Tới (${pendingTickets.length})`, activeCls: "bg-emerald-500 text-slate-950 font-black shadow-md" },
     { id: "all" as const, icon: ListChecks, label: `Toàn Bộ ${evaluatedGroups.length} Kỳ (90 Ngày)`, activeCls: "bg-sky-500 text-slate-950 font-black shadow-md" },
   ];

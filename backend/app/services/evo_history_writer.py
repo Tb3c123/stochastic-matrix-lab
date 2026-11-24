@@ -76,7 +76,7 @@ async def persist_champion_history_tickets(
                 "batch_ticket_total": ticket_chunks,
                 "auto_generated_by_ai": True,
                 "champion_epoch": epoch,
-                "strategy_name_override": f"🏆 Cá Thể Alpha Đời #{epoch} (Nổ {freq_pct}% • {win_d}/{tot_d} kỳ) • {vp['variant_code']}",
+                "strategy_name_override": f"🏆 Quán Quân 6/6 Đời #{epoch} ({win_d}/{tot_d} kỳ nổ 6/6) • {vp['variant_code']}",
             }
             saved_ticket, _ = evaluate_and_build_ticket_record(
                 game_code=game_code,

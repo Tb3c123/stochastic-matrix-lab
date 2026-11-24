@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo } from "react";
 import { API_BASE_URL } from "@/config/api";
+import { getClientCache, setClientCache } from "@/lib/clientCache";
 import { DEFAULT_WINNING_SUMMARY } from "./formatters";
 import { groupTicketsByDate } from "../saved-tickets/groupTickets";
 
@@ -8,13 +9,24 @@ export function useUnifiedTickets(
   prizeTier: string,
   refreshTrigger: number
 ) {
-  const [winHistory, setWinHistory] = useState<any>(null);
-  const [allTickets, setAllTickets] = useState<any[]>([]);
-  const [loading, setLoading] = useState<boolean>(true);
+  const winCacheKey = `win:${gameCode}:${prizeTier}`;
+  const tktCacheKey = `tickets:${gameCode}`;
+
+  const [winHistory, setWinHistory] = useState<any>(() => getClientCache(winCacheKey) || null);
+  const [allTickets, setAllTickets] = useState<any[]>(() => getClientCache(tktCacheKey) || []);
+  const [loading, setLoading] = useState<boolean>(() => !getClientCache(winCacheKey));
 
   useEffect(() => {
     let mounted = true;
-    setLoading(true);
+    const cachedW = getClientCache(winCacheKey);
+    const cachedT = getClientCache<any[]>(tktCacheKey);
+    if (cachedW) {
+      setWinHistory(cachedW);
+      setLoading(false);
+    } else {
+      setLoading(true);
+    }
+    if (cachedT) setAllTickets(cachedT);
 
     const load = async (initial = false) => {
       if (!initial && typeof document !== "undefined" && document.hidden) return;
@@ -32,8 +44,14 @@ export function useUnifiedTickets(
         const wJson = await wRes.json();
         const tJson = await tRes.json();
         if (!mounted) return;
-        if (wJson.success && wJson.data) setWinHistory(wJson.data);
-        if (tJson.success && tJson.data) setAllTickets(tJson.data);
+        if (wJson.success && wJson.data) {
+          setClientCache(winCacheKey, wJson.data);
+          setWinHistory(wJson.data);
+        }
+        if (tJson.success && tJson.data) {
+          setClientCache(tktCacheKey, tJson.data);
+          setAllTickets(tJson.data);
+        }
       } catch (e) {
         console.error("Unified tickets fetch failed:", e);
       } finally {
@@ -47,7 +65,7 @@ export function useUnifiedTickets(
       mounted = false;
       clearInterval(timer);
     };
-  }, [gameCode, prizeTier, refreshTrigger]);
+  }, [gameCode, prizeTier, refreshTrigger, winCacheKey, tktCacheKey]);
 
   const summary = winHistory?.summary || DEFAULT_WINNING_SUMMARY;
   const winningTickets: any[] = winHistory?.winning_tickets || [];

@@ -5,6 +5,7 @@ from datetime import datetime
 from fastapi import FastAPI
 from fastapi.responses import RedirectResponse
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 
 from app.config import settings
 from app.database import init_db
@@ -70,6 +71,7 @@ app = FastAPI(
 
 # Enable CORS for Next.js frontend (Vercel & local clients)
 cors_origins = [o.strip() for o in settings.CORS_ORIGINS.split(",") if o.strip()] or ["*"]
+app.add_middleware(GZipMiddleware, minimum_size=1000)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=cors_origins,

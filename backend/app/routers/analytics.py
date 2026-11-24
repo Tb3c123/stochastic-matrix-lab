@@ -9,6 +9,7 @@ from app.schemas.common import ResponseEnvelope, ErrorDetail
 from app.analytics.frequency import calculate_hot_cold
 from app.analytics.lateness import calculate_lateness
 from app.analytics.distribution import calculate_distribution
+from app.services.api_cache import get_cached, set_cached
 
 router = APIRouter(prefix="/analytics", tags=["Analytics"])
 
@@ -38,6 +39,10 @@ async def get_hot_cold(
     db: AsyncSession = Depends(get_db_session)
 ):
     """Get hot and cold frequency ranking."""
+    ckey = f"{game_code}::{window_size}"
+    cached = get_cached("hot_cold", ckey, ttl_sec=60.0)
+    if cached is not None:
+        return ResponseEnvelope(success=True, data=cached)
     game, draws = await get_draws_data(db, game_code, window_size)
     if not game:
         return ResponseEnvelope(success=False, error=ErrorDetail(code="NOT_FOUND", message=f"Game {game_code} not found"))
@@ -45,6 +50,7 @@ async def get_hot_cold(
     stats = calculate_hot_cold(draws, max_number=game.max_number)
     stats["game_code"] = game.code
     stats["window_size"] = window_size
+    set_cached("hot_cold", ckey, stats)
     return ResponseEnvelope(success=True, data=stats)
 
 @router.get("/lateness", response_model=ResponseEnvelope)
@@ -53,12 +59,16 @@ async def get_lateness(
     db: AsyncSession = Depends(get_db_session)
 ):
     """Get lateness and gap matrix per number."""
+    cached = get_cached("lateness", game_code, ttl_sec=60.0)
+    if cached is not None:
+        return ResponseEnvelope(success=True, data=cached)
     game, draws = await get_draws_data(db, game_code, window_size=500)
     if not game:
         return ResponseEnvelope(success=False, error=ErrorDetail(code="NOT_FOUND", message=f"Game {game_code} not found"))
 
     stats = calculate_lateness(draws, max_number=game.max_number)
     stats["game_code"] = game.code
+    set_cached("lateness", game_code, stats)
     return ResponseEnvelope(success=True, data=stats)
 
 @router.get("/distribution", response_model=ResponseEnvelope)
@@ -68,10 +78,15 @@ async def get_distribution(
     db: AsyncSession = Depends(get_db_session)
 ):
     """Get even/odd ratio distribution and sum range statistics."""
+    ckey = f"{game_code}::{window_size}"
+    cached = get_cached("dist", ckey, ttl_sec=60.0)
+    if cached is not None:
+        return ResponseEnvelope(success=True, data=cached)
     game, draws = await get_draws_data(db, game_code, window_size)
     if not game:
         return ResponseEnvelope(success=False, error=ErrorDetail(code="NOT_FOUND", message=f"Game {game_code} not found"))
 
     stats = calculate_distribution(draws)
     stats["game_code"] = game.code
+    set_cached("dist", ckey, stats)
     return ResponseEnvelope(success=True, data=stats)

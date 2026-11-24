@@ -10,6 +10,7 @@ from app.models.draw import DrawResult
 from app.schemas.common import ResponseEnvelope, ErrorDetail
 from app.schemas.draw import DrawResultResponse
 from app.crawler.manager import CrawlerManager
+from app.services.api_cache import get_cached, set_cached, invalidate_game_cache
 
 router = APIRouter(prefix="/draws", tags=["Draws"])
 
@@ -43,6 +44,11 @@ async def get_latest_draw(
     db: AsyncSession = Depends(get_db_session),
 ):
     """Retrieve the latest draw for a game. Auto-crawls if DB is empty or after 19:10 on draw days."""
+    if not force_sync:
+        cached = get_cached("latest_draw", game_code, ttl_sec=15.0)
+        if cached is not None:
+            return ResponseEnvelope(success=True, data=cached)
+
     game = (await db.execute(select(LotteryGame).where(LotteryGame.code == game_code))).scalar_one_or_none()
     if not game:
         return ResponseEnvelope(success=False, error=ErrorDetail(code="NOT_FOUND", message=f"Game {game_code} not found"))
@@ -61,10 +67,13 @@ async def get_latest_draw(
     if should_sync:
         await CrawlerManager(db).sync_recent_draws(game_code, limit=10)
         latest_draw = await _fetch_latest_draw(db, game.id)
+        invalidate_game_cache(game_code)
 
     if not latest_draw:
         return ResponseEnvelope(success=False, error=ErrorDetail(code="NOT_FOUND", message="No draws available"))
-    return ResponseEnvelope(success=True, data=_to_draw_response(latest_draw, game.code))
+    resp = _to_draw_response(latest_draw, game.code)
+    set_cached("latest_draw", game_code, resp)
+    return ResponseEnvelope(success=True, data=resp)
 
 
 @router.post("/sync-now", response_model=ResponseEnvelope)

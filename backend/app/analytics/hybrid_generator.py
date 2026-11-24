@@ -92,12 +92,10 @@ def generate_variant_ticket_rows(
             c_set = set(cand)
             if len(c_set) != 6 or cand in rows or cand in excluded_rows:
                 continue
+            if any(ticket_counts.get(n, 0) >= 2 for n in cand) or any(len(c_set & set(r)) > 2 for r in rows):
+                continue
             strict = step < int(iterations * 0.85)
-            if strict and (
-                any(ticket_counts.get(n, 0) >= 2 for n in cand)
-                or any(len(c_set & set(r)) > 2 for r in rows)
-                or any(len(c_set & set(er)) > 3 for er in excluded_rows)
-            ):
+            if strict and any(len(c_set & set(er)) > 3 for er in excluded_rows):
                 continue
             passed, composite = score_candidate_dna(game_code, cand, number_scores, w_gauss=state.w_gauss_sum, w_parity=state.w_parity)
             if (passed, composite) > best_key:

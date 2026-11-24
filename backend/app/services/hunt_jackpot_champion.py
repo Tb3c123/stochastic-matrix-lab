@@ -37,13 +37,13 @@ async def hunt_for_game(
     if not game:
         return {"ok": False, "error": "game_not_found"}
     is_power = game_code == "power_6_55"
-    tensors = precompute_window_tensors(draws, game.max_number, days_back=days_back, is_power=is_power)
+    tensors = await asyncio.to_thread(precompute_window_tensors, draws, game.max_number, days_back, is_power)
     if not tensors:
         return {"ok": False, "error": "insufficient_draws"}
 
     latest_period = draws[-1].draw_period
-    population = seed_initial_population(base_w, pop_size=16)
-    best_sig = (-1.0, -1.0, -1.0)
+    population = seed_initial_population(base_w, pop_size=16, max_num=game.max_number)
+    best_m6_sig = (-1, -1, -1, -1.0)
     champ_version = int(_ACTIVE_STATE.get(game_code, {}).get("champion_version", 0))
     saved_hist_cnt = int(_ACTIVE_STATE.get(game_code, {}).get("saved_history_tickets", 0))
     stagnation = total_culled = gen = 0
@@ -52,23 +52,26 @@ async def hunt_for_game(
 
     while infinite or gen < max_epochs:
         gen += 1
-        if infinite and gen % 60 == 0:
+        if infinite and gen % 80 == 0:
             _, fresh_draws, _ = await load_game_draws_and_seed(game_code)
             if fresh_draws and fresh_draws[-1].draw_period != latest_period:
                 latest_period = fresh_draws[-1].draw_period
-                tensors = precompute_window_tensors(fresh_draws, game.max_number, days_back=days_back, is_power=is_power)
+                tensors = await asyncio.to_thread(precompute_window_tensors, fresh_draws, game.max_number, days_back, is_power)
                 for b in population:
                     b["eval"] = None
-                best_sig = (-1.0, -1.0, -1.0)
+                best_m6_sig = (-1, -1, -1, -1.0)
 
-        out = run_tournament_generation(population, tensors, game.max_number, is_power, gen, stagnation_gens=stagnation)
+        out = await asyncio.to_thread(
+            run_tournament_generation, population, tensors, game.max_number, is_power, gen, stagnation
+        )
         champ_bot = out["champion"]
         ev = champ_bot["eval"]
         total_culled += out["culled_count"]
-        cur_sig = (ev["fitness"], ev["hit_frequency_pct"], ev["holdout_frequency_pct"])
+        cur_sig = (ev["winning_draws"], ev["match_6"], ev["holdout_wins"], ev["fitness"] if not infinite else 0.0)
+        qualifies = (not infinite and (gen == max_epochs or cur_sig > best_m6_sig)) or (infinite and ev["winning_draws"] >= 1 and cur_sig > best_m6_sig)
 
-        if cur_sig > best_sig:
-            best_sig = cur_sig
+        if qualifies:
+            best_m6_sig = cur_sig
             stagnation = 0
             champ_version += 1
             top_valid = sorted([b for b in population if b.get("eval")], key=lambda x: x["eval"]["fitness"], reverse=True)[:3] or [champ_bot]
@@ -82,11 +85,11 @@ async def hunt_for_game(
         is_running = infinite or (gen < max_epochs)
         if now - last_flush >= 2.0 or not is_running or stagnation == 0:
             _ACTIVE_STATE[game_code] = {
-                "running": is_running, "mode": "cruise" if ev["hit_frequency_pct"] >= 70.0 else "sprint",
+                "running": is_running, "mode": "cruise" if ev["winning_draws"] >= 8 else "sprint",
                 "days_back": days_back, "draws_in_window": len(tensors), "generation": gen, "epochs_done": gen,
                 "max_epochs": max_epochs, "epochs_per_sec": round(gen / max(0.01, now - t0), 2),
                 "champion_version": champ_version, "is_draw_locked": is_upcoming_draw_locked(game_code),
-                "target_frequency_pct": 70.0, "champion_name": champ_bot["bot_name"], "champion_age": champ_bot["age"],
+                "target_frequency_pct": 25.0, "champion_name": champ_bot["bot_name"], "champion_age": champ_bot["age"],
                 "champion_weights": champ_bot["genome"], "fitness": ev["fitness"],
                 "hit_frequency_pct": ev["hit_frequency_pct"], "holdout_frequency_pct": ev["holdout_frequency_pct"],
                 "winning_draws": ev["winning_draws"], "max_drought": ev["max_drought"], "multi_hit_draws": ev["multi_hit_draws"],
@@ -98,7 +101,7 @@ async def hunt_for_game(
             _flush_status()
             last_flush = now
 
-        pause = sleep_sec if sleep_sec is not None else (0.28 if ev["hit_frequency_pct"] >= 70.0 else 0.04)
+        pause = sleep_sec if sleep_sec is not None else (0.25 if ev["winning_draws"] >= 8 else 0.05)
         if pause > 0:
             await asyncio.sleep(pause)
     return _ACTIVE_STATE.get(game_code, {})

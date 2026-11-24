@@ -15,13 +15,13 @@ export const WinningTierPills: React.FC<WinningTierPillsProps> = ({
 }) => {
   const tierPills = [
     {
-      id: "jackpot",
-      label: "Jackpot",
-      count: (tierCounts?.jackpot_1 || 0) + (tierCounts?.jackpot_2 || 0),
+      id: "jackpot_6",
+      label: "🎯 Tuyệt Đối 6/6",
+      count: tierCounts?.jackpot_1 || 0,
       activeCls:
-        "bg-amber-500/25 border-amber-400 text-white ring-1 ring-amber-400",
+        "bg-amber-500/30 border-amber-300 text-amber-200 font-black ring-1 ring-amber-400",
       hoverCls: "hover:border-amber-500/50",
-      numCls: "text-amber-400"
+      numCls: "text-amber-300"
     },
     {
       id: "first",

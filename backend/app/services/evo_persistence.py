@@ -9,6 +9,7 @@ from app.analytics.hybrid_learning import get_or_create_learning_state
 from app.analytics.hybrid_policy import get_current_escalation_level
 from app.services.evo_history_writer import persist_champion_history_tickets
 from app.services.alpha_ticket_builder import upsert_alpha_upcoming_tickets
+from app.services.api_cache import invalidate_game_cache
 
 
 async def load_game_draws_and_seed(game_code: str):
@@ -39,13 +40,14 @@ async def persist_alpha_record(
         log_item = {
             "timestamp": datetime.utcnow().isoformat(), "draw_period": bh.get("draw_period") or "EVO",
             "draw_date": bh.get("draw_date") or datetime.utcnow().strftime("%Y-%m-%d"), "winning_numbers": bh.get("winning_numbers", []),
-            "policy_action": f"🏆 Thế hệ #{gen}: {champ_bot['bot_name']} đạt {ev['hit_frequency_pct']}% kỳ trúng ({ev['winning_draws']}/{ev['draws_total']} kỳ)",
+            "policy_action": f"🏆 Thế hệ #{gen}: {champ_bot['bot_name']} khóa {ev['winning_draws']} kỳ ĐỘC ĐẮC 6/6",
             "cycle_reward": ev["fitness"], "escalation_level": esc, "target_ticket_count": 4,
-            "feedback_summary": f"🧬 [ĐẤU TRƯỜNG ĐỜI #{gen}]: Nổ {ev['winning_draws']}/{ev['draws_total']} kỳ ({ev['hit_frequency_pct']}%) • Holdout {ev['holdout_frequency_pct']}% • Max trượt {ev['max_drought']} kỳ (6/6:{ev['match_6']}, 5/6:{ev['match_5']}, 4/6:{ev['match_4']}, 3/6:{ev['match_3']}).",
+            "feedback_summary": f"🎯 [KỶ LỤC 6/6 ĐỜI #{gen}]: Nổ {ev['winning_draws']}/{ev['draws_total']} kỳ Độc Đắc 6/6 ({ev['hit_frequency_pct']}%) • Tổng dãy 6/6: {ev['match_6']} • Bàn đạp 5/6: {ev['match_5']}.",
             "weights": {"lateness": state.w_lateness, "hot": state.w_hot, "gauss_sum": state.w_gauss_sum, "parity": state.w_parity}, "bandit_reward": state.bandit_cumulative_reward,
         }
         state.learning_logs = (list(state.learning_logs or []) + [log_item])[-20:]
         await db.commit()
         saved_hist = await persist_champion_history_tickets(db, game_code, gen, ev)
         up_info = await upsert_alpha_upcoming_tickets(db, game_code, gen, top_bots, accuracy_pct=ev["hit_frequency_pct"])
+    invalidate_game_cache(game_code)
     return {"saved_history": saved_hist, **up_info}

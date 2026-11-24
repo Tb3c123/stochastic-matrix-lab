@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useRef } from "react";
 import { API_BASE_URL } from "@/config/api";
+import { getClientCache, setClientCache } from "@/lib/clientCache";
 import { GoldenSignalHeroBanner } from "./GoldenSignalHeroBanner";
 import { TournamentArenaBoard } from "./hybrid-learning/TournamentArenaBoard";
 import { ChampionGenomeStrip } from "./hybrid-learning/ChampionGenomeStrip";
@@ -19,15 +20,18 @@ export const HybridLearningDashboard: React.FC<HybridLearningProps> = ({
   refreshTrigger = 0,
   onChampionUpgraded,
 }) => {
-  const [statusData, setStatusData] = useState<any>(null);
-  const [loading, setLoading] = useState<boolean>(true);
+  const [statusData, setStatusData] = useState<any>(() => getClientCache(`status:${gameCode}`) || null);
   const [activeTicketIdx, setActiveTicketIdx] = useState<number>(0);
   const champVerRef = useRef<number | null>(null);
 
   useEffect(() => {
     let mounted = true;
+    const cached = getClientCache(`status:${gameCode}`);
+    if (cached) {
+      setStatusData(cached);
+      setActiveTicketIdx(0);
+    }
     champVerRef.current = null;
-    setLoading(true);
 
     const fetchStatus = async (initial = false) => {
       if (!initial && typeof document !== "undefined" && document.hidden) return;
@@ -37,13 +41,14 @@ export const HybridLearningDashboard: React.FC<HybridLearningProps> = ({
         );
         const json = await res.json();
         if (mounted && json.success && json.data) {
+          setClientCache(`status:${gameCode}`, json.data);
           setStatusData(json.data);
           const newVer = Number(json.data.champion_version || 0);
           if (champVerRef.current !== null && newVer > champVerRef.current) {
             onChampionUpgraded?.();
           }
           champVerRef.current = newVer;
-          if (initial) {
+          if (initial && !cached) {
             const batch: any[] = json.data.latest_ai_tickets || [];
             const bestIdx = batch.findIndex((t: any) => t.is_best_ai_ticket);
             setActiveTicketIdx(bestIdx >= 0 ? bestIdx : 0);
@@ -51,8 +56,6 @@ export const HybridLearningDashboard: React.FC<HybridLearningProps> = ({
         }
       } catch (e) {
         console.error("Fetch auto cycle status failed:", e);
-      } finally {
-        if (mounted && initial) setLoading(false);
       }
     };
 
@@ -64,10 +67,9 @@ export const HybridLearningDashboard: React.FC<HybridLearningProps> = ({
     };
   }, [gameCode, refreshTrigger, onChampionUpgraded]);
 
-  if (loading && !statusData) {
+  if (!statusData) {
     return <div className="h-72 rounded-3xl bg-slate-900/80 border border-slate-800 animate-pulse" />;
   }
-  if (!statusData) return null;
 
   const latestAiTickets: any[] =
     statusData.latest_ai_tickets?.length > 0
