@@ -38,9 +38,9 @@ async def auto_cycle_worker():
             weekday = now_vn.weekday() # 0: Mon, 1: Tue, 2: Wed, 3: Thu, 4: Fri, 5: Sat, 6: Sun
 
             # ==============================================================
-            # TASK 1: 18:35 - 20:30 Evening Official Draw Sync & Real-Time Evaluation
+            # TASK 1: 18:32 - 21:30 Evening Official Draw Sync & Real-Time Evaluation
             # ==============================================================
-            is_evening_sync_window = (hour == 18 and minute >= 35) or (hour == 19) or (hour == 20 and minute <= 30)
+            is_evening_sync_window = (hour == 18 and minute >= 32) or (hour in (19, 20)) or (hour == 21 and minute <= 30)
             if is_evening_sync_window:
                 for g_code in ["mega_6_45", "power_6_55"]:
                     # Mega: Wed(2), Fri(4), Sun(6); Power: Tue(1), Thu(3), Sat(5)
@@ -97,5 +97,6 @@ async def auto_cycle_worker():
         except Exception as e:
             logger.error(f"Error in scheduler worker loop: {e}")
 
-        # Check every 60 seconds
-        await asyncio.sleep(60)
+        # Poll every 30s during live result publication window (18:30-19:30), 60s otherwise
+        fast_poll = (datetime.now(VN_TZ).hour == 18 and datetime.now(VN_TZ).minute >= 30) or (datetime.now(VN_TZ).hour == 19 and datetime.now(VN_TZ).minute <= 30)
+        await asyncio.sleep(30 if fast_poll else 60)

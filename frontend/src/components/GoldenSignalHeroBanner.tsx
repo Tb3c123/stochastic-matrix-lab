@@ -113,8 +113,11 @@ export const GoldenSignalHeroBanner: React.FC<{
               </span>
             )}
             {statusData.is_draw_locked && (
-              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-amber-500/20 text-amber-200 border border-amber-400/40">
-                <Lock className="w-3 h-3" /> Đã khóa chốt giờ quay
+              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-black bg-emerald-500/25 text-emerald-200 border border-emerald-400/50">
+                <Lock className="w-3 h-3" />
+                {statusData.standby_phase === "final_buy_window"
+                  ? "BỘ SỐ CHỐT CUỐI NGÀY (16:30) • MUA VÉ TRƯỚC 17:45"
+                  : "ĐÃ ĐÓNG CỔNG VÉ • CHỜ KẾT QUẢ XỔ & TỰ CHẤM 18:35"}
               </span>
             )}
           </div>

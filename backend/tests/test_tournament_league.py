@@ -15,7 +15,8 @@ from app.analytics.tournament_league import seed_initial_population, run_tournam
 from app.services.alpha_ticket_builder import is_upcoming_draw_locked
 from app.services.live_arena_scorer import snapshot_squad_for_upcoming_draw, score_squad_on_official_draw
 from app.services.hunt_jackpot_champion import (
-    hunt_for_game, is_night_boost_window, get_target_squad_size, compute_thermal_pacing, resolve_horizon_days,
+    hunt_for_game, is_night_boost_window, get_target_squad_size,
+    get_draw_standby_info, compute_thermal_pacing, resolve_horizon_days,
 )
 
 VN_TZ = timezone(timedelta(hours=7))
@@ -80,10 +81,22 @@ def test_anti_clone_dynasties_row_locking_and_ensemble_council():
 
 
 def test_draw_freeze_and_elastic_schedule():
-    wed_1750 = datetime(2026, 11, 25, 17, 50, tzinfo=VN_TZ)
+    wed_1620 = datetime(2026, 11, 25, 16, 20, tzinfo=VN_TZ)
+    wed_1635 = datetime(2026, 11, 25, 16, 35, tzinfo=VN_TZ)
+    wed_1810 = datetime(2026, 11, 25, 18, 10, tzinfo=VN_TZ)
+    wed_1838 = datetime(2026, 11, 25, 18, 38, tzinfo=VN_TZ)
     t_0030 = datetime(2026, 11, 25, 0, 30, tzinfo=VN_TZ)
     t_0700 = datetime(2026, 11, 25, 7, 0, tzinfo=VN_TZ)
-    assert is_upcoming_draw_locked("mega_6_45", wed_1750) is True
+
+    assert get_draw_standby_info("mega_6_45", "2026-11-22", wed_1620)["phase"] == "active"
+    assert get_draw_standby_info("mega_6_45", "2026-11-22", wed_1635) == {"phase": "final_buy_window", "locked": True, "cutoff": "17:45", "seal_time": "16:30"}
+    assert get_draw_standby_info("mega_6_45", "2026-11-22", wed_1810)["phase"] == "waiting_official_result"
+    # Non-draw game (Power 6/55 on Wednesday) stays active!
+    assert get_draw_standby_info("power_6_55", "2026-11-24", wed_1635)["locked"] is False
+    # Instant unlock as soon as today's official draw lands in DB!
+    assert get_draw_standby_info("mega_6_45", "2026-11-25", wed_1838) == {"phase": "active", "locked": False, "cutoff": "17:45", "seal_time": "16:30"}
+    assert is_upcoming_draw_locked("mega_6_45", wed_1635, "2026-11-22") is True
+    assert is_upcoming_draw_locked("mega_6_45", wed_1838, "2026-11-25") is False
     assert is_night_boost_window(t_0030) is True
     assert get_target_squad_size(t_0030) == 36
     assert get_target_squad_size(t_0700) == 12

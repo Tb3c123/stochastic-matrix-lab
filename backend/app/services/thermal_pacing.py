@@ -1,5 +1,5 @@
 from datetime import datetime, timezone, timedelta
-from typing import Dict, Optional, Tuple
+from typing import Any, Dict, Optional, Tuple
 
 VN_TZ = timezone(timedelta(hours=7))
 GAME_HORIZON_DAYS: Dict[str, int] = {
@@ -22,6 +22,27 @@ def is_night_boost_window(now_vn: Optional[datetime] = None) -> bool:
 
 def get_target_squad_size(now_vn: Optional[datetime] = None) -> int:
     return 36 if is_night_boost_window(now_vn) else 12
+
+
+def get_draw_standby_info(
+    game_code: str, latest_draw_date: str = "", now_vn: Optional[datetime] = None,
+) -> Dict[str, Any]:
+    """4-phase draw-day controller:
+    - active (<16:30 or non-draw day or today's result already landed)
+    - final_buy_window (16:30-17:45 on draw day before sales close)
+    - waiting_official_result (17:45-21:30 until today's official draw lands in DB)
+    """
+    dt = now_vn or datetime.now(VN_TZ)
+    today_str = dt.strftime("%Y-%m-%d")
+    is_draw_day = (dt.weekday() in (2, 4, 6)) if game_code == "mega_6_45" else (dt.weekday() in (1, 3, 5))
+    today_landed = bool(latest_draw_date and latest_draw_date == today_str)
+    if is_draw_day and not today_landed:
+        mins = dt.hour * 60 + dt.minute
+        if (16 * 60 + 30) <= mins < (17 * 60 + 45):
+            return {"phase": "final_buy_window", "locked": True, "cutoff": "17:45", "seal_time": "16:30"}
+        if (17 * 60 + 45) <= mins < (21 * 60 + 30):
+            return {"phase": "waiting_official_result", "locked": True, "cutoff": "17:45", "seal_time": "16:30"}
+    return {"phase": "active", "locked": False, "cutoff": "17:45", "seal_time": "16:30"}
 
 
 def compute_thermal_pacing(

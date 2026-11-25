@@ -32,7 +32,10 @@ export const TournamentArenaBoard: React.FC<{
             </span>
             {isDrawLocked && (
               <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-amber-500/20 text-amber-300 border border-amber-400/40">
-                <Lock className="w-3 h-3" /> Đã khóa chốt chờ xổ 18:35
+                <Lock className="w-3 h-3" />
+                {evo.standby_phase === "final_buy_window"
+                  ? "Đã chốt số cuối 16:30 • Mời mua vé trước 17:45"
+                  : "Tạm nghỉ thi đấu • Chờ kết quả xổ 18:35"}
               </span>
             )}
           </div>
@@ -43,11 +46,13 @@ export const TournamentArenaBoard: React.FC<{
         <div className="text-xs text-slate-300 bg-slate-900/90 border border-slate-700/80 rounded-xl px-3.5 py-2 font-mono">
           Nhịp:{" "}
           <b className="text-emerald-400">
-            {evo.mode === "night_boost" || evo.mode === "night_cooldown"
-              ? "🌙 36 Quân Đêm (00:30–07:00)"
-              : evo.mode === "day_idle"
-                ? "💤 Ngủ Đông 0% CPU"
-                : "🍃 12 Quân Eco (<1% CPU)"}
+            {evo.mode === "draw_standby" || isDrawLocked
+              ? "⏸️ Tạm Nghỉ Chờ Xổ (0% CPU)"
+              : evo.mode === "night_boost" || evo.mode === "night_cooldown"
+                ? "🌙 36 Quân Đêm (00:30–07:00)"
+                : evo.mode === "day_idle"
+                  ? "💤 Ngủ Đông 0% CPU"
+                  : "🍃 12 Quân Eco (<1% CPU)"}
           </b>{" "}
           • Vua: <b className="text-amber-300">v{evo.champion_version || 1}</b>
         </div>

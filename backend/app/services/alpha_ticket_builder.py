@@ -10,22 +10,19 @@ from app.analytics.evo_engine import build_feature_step
 from app.analytics.ensemble_council import build_ensemble_ticket_plans
 from app.analytics.hybrid_policy import TICKET_VARIANT_PROFILES
 from app.services.live_arena_scorer import snapshot_squad_for_upcoming_draw
+from app.services.thermal_pacing import VN_TZ, get_draw_standby_info
 
-VN_TZ = timezone(timedelta(hours=7))
 
-
-def is_upcoming_draw_locked(game_code: str, now_vn: Optional[datetime] = None) -> bool:
-    dt = now_vn or datetime.now(VN_TZ)
-    is_draw_day = (dt.weekday() in (2, 4, 6)) if game_code == "mega_6_45" else (dt.weekday() in (1, 3, 5))
-    if not is_draw_day:
-        return False
-    mins = dt.hour * 60 + dt.minute
-    return (17 * 60 + 45) <= mins <= (19 * 60 + 15)
+def is_upcoming_draw_locked(
+    game_code: str, now_vn: Optional[datetime] = None, latest_draw_date: str = "",
+) -> bool:
+    return bool(get_draw_standby_info(game_code, latest_draw_date, now_vn)["locked"])
 
 
 async def upsert_alpha_upcoming_tickets(
     db: AsyncSession, game_code: str, generation: int, top_bots: List[Dict[str, Any]],
     accuracy_pct: float = 0.0, full_population: Optional[List[Dict[str, Any]]] = None,
+    force_final_seal: bool = False,
 ) -> Dict[str, Any]:
     from app.routers.tickets import compute_next_draw_date, compute_single_row_jackpot_forecast, compute_ticket_beauty_evaluation
 
@@ -46,7 +43,8 @@ async def upsert_alpha_upcoming_tickets(
             SavedTicket.game_code == game_code, SavedTicket.strategy == "hybrid_ai_learned", SavedTicket.status == "pending",
         )
     )).scalars().all())
-    if is_upcoming_draw_locked(game_code) and any(t.target_draw_period == target_period for t in existing_pending):
+    locked_now = is_upcoming_draw_locked(game_code, latest_draw_date=latest.draw_date)
+    if locked_now and not force_final_seal and any(t.target_draw_period == target_period for t in existing_pending):
         return {"updated": 0, "locked": True, "target_period": target_period}
 
     for old_t in existing_pending:

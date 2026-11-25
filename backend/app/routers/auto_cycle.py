@@ -8,7 +8,7 @@ from app.models.ticket import SavedTicket
 from app.schemas.common import ResponseEnvelope, ErrorDetail
 from app.analytics.bandit import compute_ucb1_arm_scores
 from app.services.hunt_jackpot_champion import read_hunter_status
-from app.services.alpha_ticket_builder import is_upcoming_draw_locked
+from app.services.thermal_pacing import get_draw_standby_info
 from app.services.api_cache import get_cached, set_cached, invalidate_game_cache
 from app.analytics.hybrid_learning import (
     get_or_create_learning_state, execute_auto_cycle_pipeline,
@@ -95,7 +95,7 @@ def _build_latest_tickets_batch(
 async def get_auto_cycle_status(game_code: str = Query("mega_6_45"), db: AsyncSession = Depends(get_db_session)):
     evo_info = read_hunter_status().get(game_code)
     champ_ver = (evo_info or {}).get("champion_version", 0)
-    locked_now = is_upcoming_draw_locked(game_code)
+    standby = get_draw_standby_info(game_code, (evo_info or {}).get("latest_draw_date", ""))
     cache_key = f"{game_code}::v{champ_ver}"
     base_payload = get_cached("auto_cycle_db", cache_key, ttl_sec=20.0)
 
@@ -116,7 +116,7 @@ async def get_auto_cycle_status(game_code: str = Query("mega_6_45"), db: AsyncSe
         batch, golden_rows, best_ai, latest_ticket, has_signal = _build_latest_tickets_batch(game_code, list(res.scalars().all()))
         base_payload = set_cached("auto_cycle_db", cache_key, {
             "game_code": game_code, "is_auto_enabled": state.is_auto_enabled,
-            "scheduled_time": "10:00 AM Hàng ngày sau ngày mở thưởng",
+            "scheduled_time": "10:00 AM • Chốt số cuối 16:30 • Đóng vé 17:45",
             "total_cycles_learned": state.total_cycles_learned, "recent_accuracy_rate": state.recent_accuracy_rate,
             "bandit_cumulative_reward": state.bandit_cumulative_reward,
             "ucb1_arm_scores": compute_ucb1_arm_scores(state.learning_logs),
@@ -131,12 +131,16 @@ async def get_auto_cycle_status(game_code: str = Query("mega_6_45"), db: AsyncSe
         })
 
     return ResponseEnvelope(success=True, data={
-        **base_payload, "evo_hunter": evo_info, "champion_version": champ_ver, "is_draw_locked": locked_now,
+        **base_payload, "evo_hunter": evo_info, "champion_version": champ_ver,
+        "is_draw_locked": standby["locked"], "standby_phase": standby["phase"], "cutoff_time": standby["cutoff"],
     })
 
 
 @router.post("/run-now", response_model=ResponseEnvelope)
 async def run_auto_cycle_now(game_code: str = Query("mega_6_45"), db: AsyncSession = Depends(get_db_session)):
+    evo_info = read_hunter_status().get(game_code) or {}
+    if get_draw_standby_info(game_code, evo_info.get("latest_draw_date", ""))["locked"]:
+        return ResponseEnvelope(success=False, error=ErrorDetail(code="DRAW_CUTOFF_LOCKED", message="Đã khóa bộ số cuối lúc 16:30 để mua vé & chờ kết quả quay thưởng."))
     result = await execute_auto_cycle_pipeline(db, game_code)
     invalidate_game_cache(game_code)
     if not result.get("success"):

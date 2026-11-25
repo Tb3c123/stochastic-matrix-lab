@@ -29,7 +29,7 @@ async def load_game_draws_and_seed(game_code: str):
 
 async def persist_alpha_record(
     game_code: str, gen: int, champ_bot: Dict[str, Any], top_bots: List[Dict[str, Any]],
-    full_population: Optional[List[Dict[str, Any]]] = None,
+    full_population: Optional[List[Dict[str, Any]]] = None, force_final_seal: bool = False,
 ) -> Dict[str, Any]:
     ev, g = champ_bot["eval"], champ_bot["genome"]
     bh = ev["best_hit"]
@@ -51,6 +51,6 @@ async def persist_alpha_record(
         state.learning_logs = (list(state.learning_logs or []) + [log_item])[-20:]
         await db.commit()
         saved_hist = await persist_champion_history_tickets(db, game_code, gen, ev)
-        up_info = await upsert_alpha_upcoming_tickets(db, game_code, gen, top_bots, accuracy_pct=ev["hit_frequency_pct"], full_population=full_population)
+        up_info = await upsert_alpha_upcoming_tickets(db, game_code, gen, top_bots, accuracy_pct=ev["hit_frequency_pct"], full_population=full_population, force_final_seal=force_final_seal)
     invalidate_game_cache(game_code)
     return {"saved_history": saved_hist, **up_info}

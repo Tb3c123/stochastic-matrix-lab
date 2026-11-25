@@ -7,6 +7,8 @@ export interface CountdownState {
   minutes: number;
   seconds: number;
   isLive: boolean;
+  isFinalBuyWindow: boolean;
+  isSalesClosed: boolean;
 }
 
 const DAY_NAMES = [
@@ -16,25 +18,29 @@ const DAY_NAMES = [
   "Thứ Tư",
   "Thứ Năm",
   "Thứ Sáu",
-  "Thứ Bảy"
+  "Thứ Bảy",
 ];
 
 export function calculateNextDrawCountdown(
   gameCode: string,
-  currentDrawPeriod?: string
+  currentDrawPeriod?: string,
+  latestDrawDate?: string
 ): CountdownState {
   const now = new Date();
-  // Vietlott draw days:
-  // Mega 6/45: Wednesday (3), Friday (5), Sunday (0)
-  // Power 6/55: Tuesday (2), Thursday (4), Saturday (6)
   const validDays = gameCode === "power_6_55" ? [2, 4, 6] : [0, 3, 5];
+
+  const y = now.getFullYear();
+  const m = (now.getMonth() + 1).toString().padStart(2, "0");
+  const d = now.getDate().toString().padStart(2, "0");
+  const todayIso = `${y}-${m}-${d}`;
+  const todayLanded = Boolean(latestDrawDate && latestDrawDate === todayIso);
 
   let target = new Date(now);
   target.setHours(18, 0, 0, 0);
 
   const isTodayValid = validDays.includes(now.getDay());
-  const isPastTodayDraw =
-    now.getHours() > 18 || (now.getHours() === 18 && now.getMinutes() >= 30);
+  const mins = now.getHours() * 60 + now.getMinutes();
+  const isPastTodayDraw = todayLanded || mins >= 18 * 60 + 45;
 
   if (!isTodayValid || isPastTodayDraw) {
     let daysToAdd = 1;
@@ -51,7 +57,9 @@ export function calculateNextDrawCountdown(
   }
 
   const diffMs = target.getTime() - now.getTime();
-  const isLive = diffMs <= 0 && diffMs >= -30 * 60 * 1000;
+  const isLive = isTodayValid && !todayLanded && mins >= 18 * 60 && mins < 18 * 60 + 45;
+  const isFinalBuyWindow = isTodayValid && !todayLanded && mins >= 16 * 60 + 30 && mins < 17 * 60 + 45;
+  const isSalesClosed = isTodayValid && !todayLanded && mins >= 17 * 60 + 45 && mins < 18 * 60 + 45;
 
   const days = Math.max(0, Math.floor(diffMs / (1000 * 60 * 60 * 24)));
   const hours = Math.max(0, Math.floor((diffMs / (1000 * 60 * 60)) % 24));
@@ -65,14 +73,8 @@ export function calculateNextDrawCountdown(
 
   let nextPeriodStr = "";
   if (currentDrawPeriod) {
-    try {
-      const pNum = parseInt(currentDrawPeriod.replace(/\D/g, ""), 10);
-      if (!isNaN(pNum)) {
-        nextPeriodStr = `#${(pNum + 1).toString().padStart(5, "0")}`;
-      }
-    } catch {
-      nextPeriodStr = "";
-    }
+    const pNum = parseInt(currentDrawPeriod.replace(/\D/g, ""), 10);
+    if (!isNaN(pNum)) nextPeriodStr = `#${(pNum + 1).toString().padStart(5, "0")}`;
   }
 
   return {
@@ -83,6 +85,8 @@ export function calculateNextDrawCountdown(
     hours,
     minutes,
     seconds,
-    isLive
+    isLive,
+    isFinalBuyWindow,
+    isSalesClosed,
   };
 }

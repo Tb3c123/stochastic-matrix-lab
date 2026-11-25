@@ -18,11 +18,11 @@ export const CompactDrawStatusBar: React.FC<{
   const isPower = gameCode === "power_6_55";
 
   useEffect(() => {
-    const tick = () => setCd(calculateNextDrawCountdown(gameCode, draw?.draw_period));
+    const tick = () => setCd(calculateNextDrawCountdown(gameCode, draw?.draw_period, draw?.draw_date));
     tick();
     const timer = setInterval(tick, 1000);
     return () => clearInterval(timer);
-  }, [gameCode, draw?.draw_period]);
+  }, [gameCode, draw?.draw_period, draw?.draw_date]);
 
   if (!draw) {
     return <div className="h-24 rounded-2xl bg-slate-900/80 border border-slate-800 animate-pulse" />;
@@ -76,9 +76,19 @@ export const CompactDrawStatusBar: React.FC<{
       {cd && (
         <div className="lg:col-span-5 flex flex-wrap items-center justify-between gap-3">
           <div>
-            <div className="flex items-center gap-1.5 text-xs font-bold text-amber-400 uppercase">
+            <div className="flex flex-wrap items-center gap-1.5 text-xs font-bold text-amber-400 uppercase">
               <Clock className="w-3.5 h-3.5 animate-pulse" />
               <span>Kỳ tới {cd.nextPeriodStr}</span>
+              {cd.isFinalBuyWindow && (
+                <span className="px-2 py-0.5 rounded-full text-[10px] bg-emerald-500/25 text-emerald-300 border border-emerald-400/50">
+                  🔒 ĐÃ CHỐT SỐ • MUA VÉ TRƯỚC 17:45
+                </span>
+              )}
+              {cd.isSalesClosed && !cd.isLive && (
+                <span className="px-2 py-0.5 rounded-full text-[10px] bg-amber-500/25 text-amber-200 border border-amber-400/50">
+                  ⏳ ĐÃ ĐÓNG VÉ • CHỜ XỔ
+                </span>
+              )}
               {cd.isLive && (
                 <span className="px-2 py-0.5 rounded-full text-[10px] bg-red-600 text-white animate-pulse">
                   ĐANG QUAY
@@ -86,7 +96,7 @@ export const CompactDrawStatusBar: React.FC<{
               )}
             </div>
             <div className="text-xs text-slate-300 mt-0.5 font-medium">
-              {cd.targetDayOfWeek}, {cd.targetDateStr} • 18:00
+              {cd.targetDayOfWeek}, {cd.targetDateStr} • Chốt 16:30 • Đóng vé 17:45 • Xổ 18:00
             </div>
           </div>
 
