@@ -37,7 +37,7 @@ export const TournamentArenaBoard: React.FC<{
             )}
           </div>
           <h4 className="text-lg md:text-xl font-extrabold text-white">
-            Luật Cưỡng Bức Mới: Bắt Buộc Công Phá 10 Kỳ Sát Hiện Tại Nhất & Cộng Điểm Thực Chiến 18:35
+            Đấu Trường 8 Gia Tộc Chống Bản Sao: Khóa Cấp Độ Dòng & Hội Đồng 4 Nguồn Bỏ Phiếu
           </h4>
         </div>
         <div className="text-xs text-slate-300 bg-slate-900/90 border border-slate-700/80 rounded-xl px-3.5 py-2 font-mono">
@@ -107,12 +107,12 @@ export const TournamentArenaBoard: React.FC<{
             <thead className="bg-slate-900/90 text-slate-400 uppercase text-[11px]">
               <tr>
                 <th className="py-2.5 px-3">Hạng</th>
-                <th className="py-2.5 px-3">Chiến Binh (4 Đầu Vé)</th>
-                <th className="py-2.5 px-3">Tuổi Thọ</th>
+                <th className="py-2.5 px-3">Gia Tộc Đấu Sĩ (Khác Gen 100%)</th>
+                <th className="py-2.5 px-3">Tuổi Gia Tộc</th>
                 <th className="py-2.5 px-3">Nổ Kỳ Gần Nhất</th>
-                <th className="py-2.5 px-3">Kỳ 6/6 Mới Nhất</th>
                 <th className="py-2.5 px-3">Tổng {monthsLabel}</th>
-                <th className="py-2.5 px-3">Điểm Thực Chiến</th>
+                <th className="py-2.5 px-3">Tiệm Cận 5/6</th>
+                <th className="py-2.5 px-3">Thực Chiến 18:35</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-800/80 font-mono">
@@ -127,12 +127,12 @@ export const TournamentArenaBoard: React.FC<{
                       </span>
                     )}
                   </td>
-                  <td className="py-2 px-3">{b.age} đời</td>
+                  <td className="py-2 px-3 text-violet-300 font-bold">{b.age} đời</td>
                   <td className="py-2 px-3 text-amber-300 font-black">
-                    {b.recent_6_draws ?? 0} / {b.recent_total ?? 10} kỳ
+                    {b.recent_6_draws ?? 0} / {b.recent_total ?? 15} kỳ
                   </td>
-                  <td className="py-2 px-3 text-emerald-300">{b.latest_6_date || "—"}</td>
-                  <td className="py-2 px-3">{b.winning_draws}/{b.draws_total} kỳ 6/6</td>
+                  <td className="py-2 px-3 text-emerald-300">{b.winning_draws}/{b.draws_total} kỳ 6/6</td>
+                  <td className="py-2 px-3 text-fuchsia-300">{b.match_5 ?? 0} dãy 5/6</td>
                   <td className="py-2 px-3 text-sky-300">+{Number(b.live_prestige || 0).toLocaleString()}</td>
                 </tr>
               ))}

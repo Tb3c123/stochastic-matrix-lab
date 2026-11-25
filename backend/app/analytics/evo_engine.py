@@ -37,14 +37,16 @@ def precompute_window_tensors(
 
 def mutate_head(head: Dict[str, Any], max_num: int, sigma: float = 0.05, rng: Optional[random.Random] = None) -> Dict[str, Any]:
     r = rng or random
-    nh = {**head, "locked": False, "pats": [list(p) for p in head["pats"]]}
-    if r.random() < 0.14:
+    lp = set(head.get("locked_pats") or [])
+    nh = {**head, "locked": False, "locked_pats": sorted(lp), "pats": [list(p) for p in head["pats"]]}
+    free_rows = [ri for ri in range(len(nh["pats"])) if ri not in lp]
+    if not lp and r.random() < 0.14:
         k = r.choice(["wh", "wf", "wl", "wm", "wpr"])
         nh[k] = round(max(0.04, min(0.65, float(nh.get(k, 0.25)) + r.gauss(0.0, sigma))), 3)
-    else:
+    elif free_rows:
         max_edits = 3 if max_num >= 55 else 2
         for _ in range(1 if r.random() < 0.65 else max_edits):
-            ri, pi, cand = r.randrange(len(nh["pats"])), r.randrange(6), r.randrange(max_num)
+            ri, pi, cand = r.choice(free_rows), r.randrange(6), r.randrange(max_num)
             if cand not in nh["pats"][ri]:
                 nh["pats"][ri][pi] = cand
                 nh["pats"][ri].sort()
@@ -66,7 +68,7 @@ def mutate_genome(
     old_heads = parent.get("heads")
     if old_heads:
         new_heads = [dict(h, pats=[list(p) for p in h["pats"]]) for h in old_heads]
-        free_idx = [i for i, h in enumerate(new_heads) if not h.get("locked")]
+        free_idx = [i for i, h in enumerate(new_heads) if len(h.get("locked_pats") or []) < len(h.get("pats", []))]
         if free_idx:
             hi = r.choice(free_idx)
             new_heads[hi] = mutate_head(new_heads[hi], max_num=max_num, sigma=sigma, rng=r)
@@ -94,10 +96,9 @@ def evaluate_genome_fast(
     m6_draws, recent_m6 = set(), set()
     latest_6_period, latest_6_date = "", ""
     heads = genome.get("heads") or []
-    head_stats = [{"recent_m6": set(), "m6_draws": set(), "rec_m5": 0, "rec_sq": 0, "long_m5": 0, "long_sq": 0} for _ in range(max(4, len(heads)))]
+    head_stats = [{"recent_m6": set(), "m6_draws": set(), "win_pats": set(), "rec_m5": 0, "rec_sq": 0, "long_m5": 0, "long_sq": 0} for _ in range(max(4, len(heads)))]
     best_hit: Dict[str, Any] = {"match_count": 0, "matched_special": False, "draw_period": "", "row": []}
     traces: List[Dict[str, Any]] = []
-
     for idx, step in enumerate(tensors):
         row_masks, sp_picks = build_deterministic_rows(genome, step, max_num, is_power, rows_per_draw)
         win_mask, sp_target = step["win_mask"], step["special_num"]
@@ -114,6 +115,7 @@ def evaluate_genome_fast(
             if mc == 6:
                 m6_draws.add(idx)
                 hs["m6_draws"].add(idx)
+                hs["win_pats"].add(r_i % 5)
                 latest_6_period, latest_6_date = step["draw_period"], step["draw_date"]
                 if in_rec:
                     recent_m6.add(idx)
@@ -121,20 +123,18 @@ def evaluate_genome_fast(
             elif mc == 5:
                 m5, jp2, hs["long_m5"] = m5 + 1, jp2 + (1 if m_sp else 0), hs["long_m5"] + 1
                 if in_rec:
-                    rec_m5 += 1
-                    hs["rec_m5"] += 1
+                    rec_m5, hs["rec_m5"] = rec_m5 + 1, hs["rec_m5"] + 1
             elif mc == 4:
-                m4 += 1
-                rec_m4 += 1 if in_rec else 0
+                m4, rec_m4 = m4 + 1, rec_m4 + (1 if in_rec else 0)
             elif mc == 3:
                 m3 += 1
             if mc >= best_hit["match_count"]:
                 best_hit = {"match_count": mc, "matched_special": m_sp, "draw_period": step["draw_period"], "draw_date": step["draw_date"], "row": mask_to_nums(cm, max_num), "winning_numbers": step["win_nums"]}
         traces.append({"draw_period": step["draw_period"], "row_masks": row_masks, "sp_picks": sp_picks})
-
     win_6_cnt, rec_6_cnt = len(m6_draws), len(recent_m6)
     for h_i, h in enumerate(heads):
-        h["locked"] = len(head_stats[h_i]["m6_draws"]) > 0
+        wp = sorted(head_stats[h_i]["win_pats"])
+        h["locked_pats"], h["locked"] = wp, len(wp) >= len(h.get("pats", []))
     older_6_cnt = win_6_cnt - rec_6_cnt
     fitness = round((rec_6_cnt * 3_500_000.0) + (older_6_cnt * 1_000_000.0) + (rec_m5 * 3_200.0) + (m5 * 700.0) + (rec_m4 * 60.0) + (m4 * 15.0) + (long_sq * 0.04), 2)
     return {

@@ -36,7 +36,7 @@ def snapshot_squad_for_upcoming_draw(
     for bot in population[:36]:
         masks, _ = build_deterministic_rows(bot["genome"], step, max_num, is_power=is_power, rows_per_draw=20)
         snaps.append({
-            "bot_id": bot["bot_id"],
+            "bot_id": bot.get("tribe_id") or bot["bot_id"],
             "bot_name": bot["bot_name"],
             "row_masks": masks,
         })

@@ -8,7 +8,9 @@ from app.main import app
 from app.database import init_db, AsyncSessionLocal
 from app.models.ticket import SavedTicket
 from app.analytics.evo_wheel import nums_to_mask
-from app.analytics.evo_engine import precompute_window_tensors, mutate_genome, evaluate_genome_fast
+from app.analytics.evo_engine import precompute_window_tensors, mutate_genome, mutate_head, evaluate_genome_fast
+from app.analytics.lineage_guard import genome_signature
+from app.analytics.ensemble_council import build_ensemble_ticket_plans
 from app.analytics.tournament_league import seed_initial_population, run_tournament_generation
 from app.services.alpha_ticket_builder import is_upcoming_draw_locked
 from app.services.live_arena_scorer import snapshot_squad_for_upcoming_draw, score_squad_on_official_draw
@@ -47,6 +49,34 @@ def test_elastic_squad_recency_priority_and_live_scorer():
     w_nums = draws[-1].winning_numbers
     sc = score_squad_on_official_draw("mega_6_45", "99991", w_nums)
     assert sc["already_scored"] is False
+
+
+def test_anti_clone_dynasties_row_locking_and_ensemble_council():
+    draws = [_DummyDraw(i, sorted([((i * 5 + k * 6) % 45) + 1 for k in range(6)])) for i in range(28)]
+    tensors = precompute_window_tensors(draws, max_num=45, days_back=80, is_power=False)
+    rng = random.Random(123)
+    pop = seed_initial_population(None, pop_size=12, max_num=45, rng=rng)
+    out = None
+    for gen in range(1, 7):
+        out = run_tournament_generation(pop, tensors, 45, False, gen, target_pop_size=12, rng=rng)
+        pop = out["next_population"]
+
+    board = out["leaderboard"]
+    assert len(board) == 6
+    assert all(b["age"] >= 2 for b in board)
+    surv_sigs = {genome_signature(b["genome"]) for b in pop[:6]}
+    assert len(surv_sigs) == 6
+
+    h0 = {"wh": 0.30, "wf": 0.20, "wl": 0.30, "wm": 0.25, "wpr": 0.20, "locked_pats": [0, 3], "pats": [[1, 2, 3, 4, 5, 6], [2, 4, 6, 8, 10, 12], [3, 6, 9, 12, 15, 18], [0, 5, 10, 15, 20, 25], [7, 11, 13, 17, 19, 23]]}
+    for _ in range(10):
+        mh = mutate_head(h0, max_num=45, rng=rng)
+        assert mh["pats"][0] == [1, 2, 3, 4, 5, 6]
+        assert mh["pats"][3] == [0, 5, 10, 15, 20, 25]
+        assert mh["wh"] == 0.30 and mh["wl"] == 0.30
+
+    plans = build_ensemble_ticket_plans("mega_6_45", pop, tensors[-1], 45, False)
+    assert [p["council_source"] for p in plans] == ["king", "runner_up", "consensus", "maverick"]
+    assert all(len(p["rows"]) == 5 for p in plans)
 
 
 def test_draw_freeze_and_elastic_schedule():

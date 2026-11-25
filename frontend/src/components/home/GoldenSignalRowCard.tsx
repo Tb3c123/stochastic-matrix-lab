@@ -17,9 +17,16 @@ export const GoldenSignalRowCard: React.FC<{
   return (
     <div className="rounded-2xl bg-slate-950/90 border border-amber-400/50 p-4 md:p-5 flex flex-col justify-between gap-3.5 shadow-lg">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <span className="px-2.5 py-1 rounded-lg bg-gradient-to-r from-amber-400 to-yellow-300 text-slate-950 font-black text-xs">
-          🎯 BỘ #{idx + 1} • {gr.row_label} ({gr.jackpot_gates_passed ?? 8}/8 CỔNG DNA • {gr.row_beauty_score ?? 98.5}đ)
-        </span>
+        <div className="flex flex-wrap items-center gap-1.5">
+          <span className="px-2.5 py-1 rounded-lg bg-gradient-to-r from-amber-400 to-yellow-300 text-slate-950 font-black text-xs">
+            🎯 BỘ #{idx + 1} • {gr.jackpot_gates_passed ?? 8}/8 DNA ({gr.row_beauty_score ?? 98.5}đ)
+          </span>
+          {gr.council_badge && (
+            <span className="px-2.5 py-1 rounded-lg bg-violet-500/20 border border-violet-400/40 text-violet-200 font-bold text-[11px]">
+              {gr.council_badge}
+            </span>
+          )}
+        </div>
         <button
           onClick={() => onCopy(rowKey, rowStr)}
           className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-[11px] font-bold text-slate-200 border border-slate-700 flex items-center gap-1 cursor-pointer"

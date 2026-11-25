@@ -94,11 +94,12 @@ async def hunt_for_game(
             infinite and ev["recent_6_draws"] >= 1 and ev["winning_draws"] >= min_total_gate and cur_sig > best_sig
         )
 
-        if qualifies:
-            best_sig, stagnation = cur_sig, 0
-            min_total_gate = max(min_total_gate, ev["winning_draws"])
+        if qualifies or (infinite and gen == 20 and ev["recent_6_draws"] >= 1):
+            if qualifies:
+                best_sig, stagnation = cur_sig, 0
+                min_total_gate = max(min_total_gate, ev["winning_draws"])
             champ_version += 1
-            top_valid = sorted([b for b in population if b.get("eval")], key=lambda x: x["eval"]["fitness"], reverse=True)[:3] or [champ_bot]
+            top_valid = sorted([b for b in out["next_population"] if b.get("eval")], key=lambda x: x["eval"]["fitness"], reverse=True)[:4] or [champ_bot]
             p_res = await persist_alpha_record(game_code, gen, champ_bot, top_valid, full_population=out["next_population"])
             saved_hist_cnt = p_res["saved_history"]
         else:

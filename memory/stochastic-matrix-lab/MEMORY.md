@@ -1,1 +1,2 @@
 - [2026-11-24] 2+2 Specialist Heads must lock gain>0 heads intact during crossover/mutate_genome so Mega (270d/117d) & Power (365d/156d) stack >=4 distinct 6/6 draws including Nov 2026.
+- [2026-11-25] 4-Source Ensemble Council (king, runner_up, consensus, maverick) + 8 Anti-Clone Dynasties + Row-Level 6/6 Locking prevents clone monoculture and ensures multi-generation dynasty ages.

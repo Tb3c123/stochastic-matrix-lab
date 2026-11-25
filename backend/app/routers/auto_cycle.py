@@ -42,6 +42,7 @@ def _build_latest_tickets_batch(
             "variant_code": variant.get("variant_code", f"VAR_{idx}"),
             "variant_name": variant.get("variant_name", f"Vé #{idx + 1} • Core Hybrid AI"),
             "variant_focus": variant.get("focus", "Tối ưu trọng số Bayes + Gauss"),
+            "council_source": pa.get("council_source", ""), "council_badge": pa.get("council_badge", ""),
             "target_draw_period": t.target_draw_period, "target_draw_date": t.target_draw_date,
             "rows": t.rows_data, "status": t.status, "row_forecasts": row_fcs,
             **{k: beauty[k] for k in (
@@ -80,6 +81,7 @@ def _build_latest_tickets_batch(
                 seen_rows.add(sig)
                 playable_golden.append({
                     **gr, "ticket_id": r_item["id"], "ticket_batch_index": r_idx + 1,
+                    "council_source": r_item.get("council_source", ""), "council_badge": r_item.get("council_badge", ""),
                     "variant_name": r_item["variant_name"], "target_draw_period": r_item["target_draw_period"],
                     "target_draw_date": r_item["target_draw_date"],
                 })
