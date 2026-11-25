@@ -68,7 +68,7 @@ export const HybridLearningDashboard: React.FC<HybridLearningProps> = ({
   }, [gameCode, refreshTrigger, onChampionUpgraded]);
 
   if (!statusData) {
-    return <div className="h-72 rounded-3xl bg-slate-900/80 border border-slate-800 animate-pulse" />;
+    return <div className="h-72 rounded-2xl bg-white border border-slate-200 animate-pulse" />;
   }
 
   const latestAiTickets: any[] =

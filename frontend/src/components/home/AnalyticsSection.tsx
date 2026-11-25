@@ -15,12 +15,12 @@ export const AnalyticsSection: React.FC<AnalyticsSectionProps> = ({
   selectedGame,
   hotColdData,
 }) => (
-  <section className="space-y-6 animate-in fade-in duration-300">
-    <div className="pb-3 border-b border-slate-800">
-      <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider bg-sky-500/10 text-sky-400 border border-sky-500/20 mb-1">
-        <BarChart2 className="w-3.5 h-3.5" /> Phân Tích Xác Suất & Chu Kỳ Lịch Sử
+  <section className="space-y-6">
+    <div className="pb-3 border-b border-slate-200">
+      <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold uppercase tracking-wide bg-slate-100 text-slate-700 border border-slate-200 mb-1.5">
+        <BarChart2 className="w-3.5 h-3.5 text-slate-600" /> Phân Tích Xác Suất & Chu Kỳ Lịch Sử
       </div>
-      <h2 className="text-xl md:text-2xl font-extrabold text-white">
+      <h2 className="text-xl md:text-2xl font-bold text-slate-900">
         Biểu Đồ Thống Kê Cầu Số Chuyên Sâu
       </h2>
     </div>

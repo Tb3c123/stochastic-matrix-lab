@@ -18,7 +18,7 @@ export const SavedTicketCard: React.FC<SavedTicketCardProps> = ({
   isExpanded,
   onToggleExpand,
   openRowAudits,
-  onToggleRowAudit
+  onToggleRowAudit,
 }) => {
   const isPending = ticket.status === "pending";
   const analysis = ticket.predicted_analysis || {};
@@ -51,14 +51,12 @@ export const SavedTicketCard: React.FC<SavedTicketCardProps> = ({
 
   return (
     <div
-      className={`border rounded-2xl p-5 transition-all relative overflow-hidden ${
+      className={`border rounded-2xl p-5 transition-colors relative overflow-hidden bg-white ${
         hasGoldenSignal
-          ? "bg-gradient-to-br from-amber-950/25 via-slate-900 to-slate-900 border-amber-400/60 ring-1 ring-amber-400/30 shadow-lg shadow-amber-500/10"
-          : isPending
-            ? "bg-slate-800/30 border-slate-800 hover:border-slate-700"
-            : matchResult?.total_prize_vnd > 0
-              ? "bg-emerald-950/20 border-emerald-800/40"
-              : "bg-slate-800/50 border-slate-700"
+          ? "border-amber-300"
+          : matchResult?.total_prize_vnd > 0
+            ? "border-emerald-300"
+            : "border-slate-200 hover:border-slate-300"
       }`}
     >
       <TicketCardHeader
@@ -75,7 +73,7 @@ export const SavedTicketCard: React.FC<SavedTicketCardProps> = ({
         beautyGrade={beautyGrade}
       />
 
-      <div className="mt-4 pt-4 border-t border-slate-800 space-y-3">
+      <div className="mt-4 pt-4 border-t border-slate-200 space-y-2.5">
         {ticket.rows.map((row: number[], rIdx: number) => (
           <TicketRowItem
             key={rIdx}

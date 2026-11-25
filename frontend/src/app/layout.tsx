@@ -13,7 +13,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="vi">
-      <body className="bg-slate-950 text-slate-100 antialiased selection:bg-red-500 selection:text-white">
+      <body className="bg-[#f6f7f9] text-slate-900 antialiased selection:bg-slate-900 selection:text-white">
         {children}
       </body>
     </html>

@@ -19,42 +19,38 @@ export const WinningTicketCard: React.FC<WinningTicketCardProps> = ({
 }) => {
   const winningRows = ticket.winning_rows || [];
   const allRowsEval = ticket.all_rows_evaluation || [];
-  const rowsToDisplay =
-    isExpanded && allRowsEval.length > 0 ? allRowsEval : winningRows;
+  const rowsToDisplay = isExpanded && allRowsEval.length > 0 ? allRowsEval : winningRows;
 
   return (
     <div
-      className={`bg-slate-900/90 border rounded-2xl p-5 transition-all shadow-lg relative overflow-hidden ${
-        isExpanded
-          ? "border-emerald-400 ring-2 ring-emerald-500/20"
-          : "border-amber-500/30 hover:border-amber-500/50"
+      className={`bg-white border rounded-2xl p-5 transition-colors shadow-sm relative overflow-hidden ${
+        isExpanded ? "border-emerald-400" : "border-slate-200 hover:border-slate-300"
       }`}
     >
-      <div className="absolute top-0 left-0 bottom-0 w-1.5 bg-gradient-to-b from-amber-400 via-emerald-400 to-amber-600" />
+      <div className="absolute top-0 left-0 bottom-0 w-1 bg-amber-600" />
 
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3.5 border-b border-slate-800">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3.5 border-b border-slate-200">
         <div className="flex flex-wrap items-center gap-2">
-          <span className="text-xs font-black text-white flex items-center gap-1.5 bg-slate-800 px-3 py-1 rounded-lg border border-slate-700">
-            <Calendar className="w-3.5 h-3.5 text-amber-400" />
+          <span className="text-xs font-bold text-slate-900 flex items-center gap-1.5 bg-slate-100 px-3 py-1 rounded-lg border border-slate-200">
+            <Calendar className="w-3.5 h-3.5 text-amber-700" />
             Kỳ #{ticket.target_draw_period} • {ticket.target_draw_date}
           </span>
-          <span className="px-2.5 py-1 rounded-lg text-[11px] font-bold bg-violet-500/15 text-violet-200 border border-violet-500/30">
+          <span className="px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-slate-50 text-slate-700 border border-slate-200">
             {ticket.strategy_name || "Cá Thể Alpha AI"}
           </span>
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          <div className="bg-emerald-500/15 border border-emerald-500/40 px-3 py-1.5 rounded-xl flex items-center gap-1.5">
-            <Trophy className="w-4 h-4 text-amber-400" />
-            <span className="text-xs text-emerald-300 font-black font-mono">
-              +{formatVND(ticket.total_prize_vnd)} ({winningRows.length}/
-              {ticket.rows_count || 5} dãy trúng)
+          <div className="bg-emerald-50 border border-emerald-200 px-3 py-1.5 rounded-xl flex items-center gap-1.5">
+            <Trophy className="w-4 h-4 text-amber-700" />
+            <span className="text-xs text-emerald-800 font-bold font-mono">
+              +{formatVND(ticket.total_prize_vnd)} ({winningRows.length}/{ticket.rows_count || 5} dãy trúng)
             </span>
           </div>
           <button
             type="button"
             onClick={onToggleExpand}
-            className="px-3 py-1.5 rounded-xl text-xs font-bold border border-slate-700 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white flex items-center gap-1 cursor-pointer"
+            className="px-3 py-1.5 rounded-xl text-xs font-semibold border border-slate-300 bg-white hover:bg-slate-100 text-slate-700 flex items-center gap-1 cursor-pointer"
           >
             <span>{isExpanded ? "Thu gọn" : "Xem đủ 5 dãy"}</span>
             {isExpanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
@@ -71,12 +67,7 @@ export const WinningTicketCard: React.FC<WinningTicketCardProps> = ({
 
       <div className="mt-3.5 space-y-2">
         {rowsToDisplay.map((row: any, rIdx: number) => (
-          <WinningTicketRowItem
-            key={rIdx}
-            row={row}
-            rowIdx={rIdx}
-            gameCode={ticket.game_code}
-          />
+          <WinningTicketRowItem key={rIdx} row={row} rowIdx={rIdx} gameCode={ticket.game_code} />
         ))}
       </div>
     </div>

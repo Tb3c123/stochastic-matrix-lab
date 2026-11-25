@@ -12,7 +12,7 @@ interface AiTicketRowItemProps {
 export const AiTicketRowItem: React.FC<AiTicketRowItemProps> = ({
   row,
   rIdx,
-  forecast
+  forecast,
 }) => {
   const sum = row.reduce((a, b) => a + b, 0);
   const evens = row.filter((n) => n % 2 === 0).length;
@@ -21,62 +21,50 @@ export const AiTicketRowItem: React.FC<AiTicketRowItemProps> = ({
 
   return (
     <div
-      className={`flex flex-col md:flex-row md:items-center justify-between gap-3 p-3 rounded-xl border transition-all ${
+      className={`flex flex-col md:flex-row md:items-center justify-between gap-3 p-3 rounded-xl border transition-colors ${
         isGoldenRow
-          ? "bg-gradient-to-r from-amber-950/35 via-slate-900/90 to-slate-900/90 border-amber-400/60 ring-1 ring-amber-400/30 shadow-md shadow-amber-500/10"
-          : "bg-slate-900/80 border-slate-800/80 hover:border-slate-700"
+          ? "bg-amber-50/50 border-amber-300"
+          : "bg-[#fafbfc] border-slate-200 hover:border-slate-300"
       }`}
     >
       <div className="flex flex-wrap items-center gap-3">
         <span
-          className={`w-7 h-7 rounded-lg text-xs font-bold flex items-center justify-center shadow-md shrink-0 ${
+          className={`w-7 h-7 rounded-lg text-xs font-bold flex items-center justify-center shrink-0 ${
             isGoldenRow
-              ? "bg-gradient-to-br from-amber-400 to-yellow-500 text-slate-950 font-black"
-              : "bg-gradient-to-br from-violet-600 to-indigo-600 text-white"
+              ? "bg-amber-600 text-white"
+              : "bg-slate-800 text-white"
           }`}
         >
           {String.fromCharCode(65 + rIdx)}
         </span>
 
         {isGoldenRow ? (
-          <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-amber-400/20 text-amber-300 border border-amber-400/50 shrink-0">
-            🎯 ĐẠT 8/8 CỔNG DNA ĐỘC ĐẮC ({forecast.row_beauty_score}đ — NÊN
-            DÙNG)
+          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-900 border border-amber-300 shrink-0">
+            ĐẠT 8/8 CỔNG DNA ({forecast.row_beauty_score}đ)
           </span>
         ) : (
           <span
-            className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-slate-800 text-slate-400 border border-slate-700 shrink-0"
+            className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-slate-100 text-slate-600 border border-slate-200 shrink-0"
             title={(forecast.failed_golden_gates || []).join(" | ")}
           >
             Đạt {gatesPassed}/8 Cổng DNA
           </span>
         )}
 
-        <span
-          className={`text-[10px] font-bold px-2 py-0.5 rounded-full border shrink-0 ${
-            rIdx < 2
-              ? "bg-indigo-500/10 text-indigo-400 border-indigo-500/30"
-              : rIdx === 2
-                ? "bg-sky-500/10 text-sky-400 border-sky-500/30"
-                : "bg-violet-500/10 text-violet-400 border-violet-500/30"
-          }`}
-        >
-          {forecast.algorithm_name ||
-            (rIdx < 2
-              ? "AI Khai Thác (Bayes + Gauss)"
-              : rIdx === 2
-                ? "AI Hồi Quy Chu Kỳ Trễ"
-                : "AI Thăm Dò (Bandit Agent)")}
+        <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full border bg-white text-slate-700 border-slate-200 shrink-0">
+          {forecast.council_badge ||
+            forecast.algorithm_name ||
+            (rIdx < 2 ? "AI Khai Thác" : rIdx === 2 ? "AI Chu Kỳ Trễ" : "AI Thăm Dò")}
         </span>
 
         <div className="flex flex-wrap items-center gap-2">
           {row.map((num) => (
             <span
               key={num}
-              className={`w-10 h-10 rounded-full font-extrabold text-sm flex items-center justify-center shadow-md ${
+              className={`w-10 h-10 rounded-full font-bold text-sm flex items-center justify-center font-mono ${
                 isGoldenRow
-                  ? "bg-gradient-to-br from-amber-300 via-amber-400 to-amber-600 text-slate-950 font-black ring-2 ring-amber-200/70 shadow-amber-500/30"
-                  : "ball-red text-white"
+                  ? "bg-amber-100 border-[1.5px] border-amber-600 text-slate-900"
+                  : "ball-red"
               }`}
             >
               {num < 10 ? `0${num}` : num}
@@ -85,10 +73,10 @@ export const AiTicketRowItem: React.FC<AiTicketRowItemProps> = ({
 
           {forecast.special_number && (
             <div className="flex items-center gap-1.5 pl-1">
-              <span className="text-amber-500 font-extrabold text-xs">+</span>
+              <span className="text-slate-400 font-bold text-xs">+</span>
               <span
-                className="w-9 h-9 rounded-full bg-amber-500/20 border-2 border-amber-400 text-amber-300 font-black text-sm flex items-center justify-center shadow-md shadow-amber-500/20"
-                title="Bóng Đặc Biệt Jackpot 2 (Được chấm điểm theo Trọng số AI)"
+                className="w-9 h-9 rounded-full ball-special font-bold text-sm flex items-center justify-center font-mono"
+                title="Bóng Đặc Biệt Jackpot 2"
               >
                 {forecast.special_number < 10
                   ? `0${forecast.special_number}`
@@ -99,26 +87,26 @@ export const AiTicketRowItem: React.FC<AiTicketRowItemProps> = ({
         </div>
       </div>
 
-      <div className="flex flex-wrap items-center gap-3 text-xs text-slate-400 pt-2 md:pt-0 border-t md:border-t-0 border-slate-800">
+      <div className="flex flex-wrap items-center gap-3 text-xs text-slate-600 pt-2 md:pt-0 border-t md:border-t-0 border-slate-200">
         <span>
-          Tổng: <b className="text-white">{sum}</b>
+          Tổng: <b className="text-slate-900">{sum}</b>
         </span>
         <span>
           Chẵn/Lẻ:{" "}
-          <b className="text-white">
+          <b className="text-slate-900">
             {evens}C : {6 - evens}L
           </b>
         </span>
         {forecast.ac_value !== undefined && (
           <span>
-            AC: <b className="text-emerald-300">{forecast.ac_value}/10</b>
+            AC: <b className="text-emerald-800">{forecast.ac_value}/10</b>
           </span>
         )}
-        <div className="flex items-center gap-1 bg-amber-500/10 border border-amber-500/20 px-2 py-0.5 rounded-md text-amber-300 font-semibold">
-          <Trophy className="w-3 h-3 text-amber-400" />
+        <div className="flex items-center gap-1 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-md text-amber-900 font-semibold">
+          <Trophy className="w-3 h-3 text-amber-700" />
           <span>
             XS Độc Đắc:{" "}
-            <b className="font-mono text-amber-400">
+            <b className="font-mono text-amber-900">
               {forecast.jackpot_probability_display || "1/8.14M (+18%)"}
             </b>
           </span>

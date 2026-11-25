@@ -9,21 +9,9 @@ interface HeaderProps {
 }
 
 const NAV_TABS = [
-  {
-    id: "ai_arena",
-    label: "🎯 Số Đẹp & Đấu Trường AI",
-    activeCls: "bg-gradient-to-r from-amber-400 to-yellow-300 text-slate-950 font-black shadow-md shadow-amber-500/25",
-  },
-  {
-    id: "tickets_hub",
-    label: "🏆 Sổ Vé & Trúng Thưởng",
-    activeCls: "bg-emerald-500 text-slate-950 font-black shadow-md shadow-emerald-500/25",
-  },
-  {
-    id: "analytics",
-    label: "📊 Thống Kê Cầu Số",
-    activeCls: "bg-sky-500 text-slate-950 font-black shadow-md shadow-sky-500/25",
-  },
+  { id: "ai_arena", label: "🎯 Số Đẹp & Đấu Trường AI" },
+  { id: "tickets_hub", label: "🏆 Sổ Vé & Trúng Thưởng" },
+  { id: "analytics", label: "📊 Thống Kê Cầu Số" },
 ];
 
 export const Header: React.FC<HeaderProps> = ({
@@ -32,34 +20,34 @@ export const Header: React.FC<HeaderProps> = ({
   activeTab,
   onSelectTab,
 }) => (
-  <header className="border-b border-slate-800/90 bg-slate-950/90 backdrop-blur-md sticky top-0 z-40">
+  <header className="border-b border-slate-200 bg-white/95 backdrop-blur-sm sticky top-0 z-40">
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between gap-3">
       <div
         className="flex items-center gap-2.5 shrink-0 cursor-pointer"
         onClick={() => onSelectTab("ai_arena")}
       >
-        <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-red-600 to-amber-500 flex items-center justify-center shadow-lg shadow-amber-500/20">
+        <div className="w-9 h-9 rounded-xl bg-red-700 flex items-center justify-center">
           <Sparkles className="w-5 h-5 text-white" />
         </div>
         <div>
-          <span className="text-lg font-black bg-clip-text text-transparent bg-gradient-to-r from-amber-300 via-white to-emerald-300">
+          <span className="text-lg font-extrabold tracking-tight text-slate-900">
             VIETLOTT AI
           </span>
-          <span className="hidden lg:inline-block text-[11px] font-bold ml-2 px-2 py-0.5 rounded-full bg-violet-500/15 text-violet-300 border border-violet-500/30">
+          <span className="hidden lg:inline-block text-[11px] font-semibold ml-2 px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 border border-slate-200">
             Darwinian Arena
           </span>
         </div>
       </div>
 
-      <nav className="hidden md:flex items-center bg-slate-900/90 p-1 rounded-2xl border border-slate-800 text-xs font-bold gap-1">
+      <nav className="hidden md:flex items-center bg-slate-100 p-1 rounded-xl border border-slate-200 text-xs font-semibold gap-1">
         {NAV_TABS.map((t) => (
           <button
             key={t.id}
             onClick={() => onSelectTab(t.id)}
-            className={`px-4 py-2 rounded-xl transition-all cursor-pointer ${
+            className={`px-4 py-2 rounded-lg transition-colors cursor-pointer ${
               activeTab === t.id
-                ? t.activeCls
-                : "text-slate-400 hover:text-white hover:bg-slate-800/60"
+                ? "bg-white text-slate-900 font-bold shadow-sm border border-slate-200/80"
+                : "text-slate-600 hover:text-slate-900"
             }`}
           >
             {t.label}
@@ -67,23 +55,23 @@ export const Header: React.FC<HeaderProps> = ({
         ))}
       </nav>
 
-      <div className="flex items-center bg-slate-900 p-1 rounded-xl border border-slate-800 shrink-0">
+      <div className="flex items-center bg-slate-100 p-1 rounded-xl border border-slate-200 shrink-0">
         <button
           onClick={() => onSelectGame("mega_6_45")}
-          className={`px-3 sm:px-4 py-1.5 text-xs sm:text-sm font-bold rounded-lg transition-all cursor-pointer ${
+          className={`px-3 sm:px-4 py-1.5 text-xs sm:text-sm font-bold rounded-lg transition-colors cursor-pointer ${
             selectedGame === "mega_6_45"
-              ? "bg-gradient-to-r from-red-600 to-rose-600 text-white shadow-md shadow-red-600/30"
-              : "text-slate-400 hover:text-white"
+              ? "bg-red-700 text-white"
+              : "text-slate-600 hover:text-slate-900"
           }`}
         >
           Mega 6/45
         </button>
         <button
           onClick={() => onSelectGame("power_6_55")}
-          className={`px-3 sm:px-4 py-1.5 text-xs sm:text-sm font-bold rounded-lg transition-all cursor-pointer ${
+          className={`px-3 sm:px-4 py-1.5 text-xs sm:text-sm font-bold rounded-lg transition-colors cursor-pointer ${
             selectedGame === "power_6_55"
-              ? "bg-gradient-to-r from-amber-500 to-orange-500 text-slate-950 font-black shadow-md shadow-amber-500/30"
-              : "text-slate-400 hover:text-white"
+              ? "bg-amber-600 text-white"
+              : "text-slate-600 hover:text-slate-900"
           }`}
         >
           Power 6/55

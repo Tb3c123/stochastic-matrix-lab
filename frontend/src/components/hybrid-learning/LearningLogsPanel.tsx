@@ -8,14 +8,14 @@ interface LearningLogsPanelProps {
 }
 
 export const LearningLogsPanel: React.FC<LearningLogsPanelProps> = ({
-  learningLogs
+  learningLogs,
 }) => {
   if (learningLogs.length === 0) return null;
 
   return (
     <div className="pt-2">
-      <div className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2 flex items-center gap-1.5">
-        <Activity className="w-3.5 h-3.5 text-violet-400" /> Nhật Ký Tự Học Hỏi
+      <div className="text-xs font-bold text-slate-600 uppercase tracking-wider mb-2 flex items-center gap-1.5">
+        <Activity className="w-3.5 h-3.5 text-slate-700" /> Nhật Ký Tự Học Hỏi
         & Dịch Chuyển Bậc Thang Gần Nhất
       </div>
       <div className="space-y-1.5 max-h-36 overflow-y-auto pr-1 text-xs">
@@ -25,9 +25,9 @@ export const LearningLogsPanel: React.FC<LearningLogsPanelProps> = ({
           .map((log: any, idx: number) => (
             <div
               key={idx}
-              className="bg-slate-850/50 p-2.5 rounded-xl border border-slate-800/60 text-slate-300 flex items-start gap-2"
+              className="bg-white p-2.5 rounded-xl border border-slate-200 text-slate-700 flex items-start gap-2"
             >
-              <span className="w-1.5 h-1.5 rounded-full bg-violet-400 mt-1.5 shrink-0"></span>
+              <span className="w-1.5 h-1.5 rounded-full bg-slate-500 mt-1.5 shrink-0"></span>
               <div>
                 <span className="text-slate-500 font-mono mr-2">
                   {log.timestamp

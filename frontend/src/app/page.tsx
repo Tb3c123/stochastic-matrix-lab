@@ -25,7 +25,7 @@ export default function HomePage() {
   );
 
   return (
-    <div className="min-h-screen flex flex-col bg-slate-950">
+    <div className="min-h-screen flex flex-col bg-[#f6f7f9] text-slate-900">
       <Header
         selectedGame={selectedGame}
         onSelectGame={setSelectedGame}
