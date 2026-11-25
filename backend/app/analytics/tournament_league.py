@@ -120,35 +120,24 @@ def run_tournament_generation(
         reverse=True,
     )
     elites, culled_count = select_diverse_dynasties(ranked, next_size, r)
-    leaderboard: List[Dict[str, Any]] = []
-    for r_idx, b in enumerate(elites[:6]):
-        ev = b["eval"]
-        leaderboard.append({
+    leaderboard = [
+        {
             "rank": r_idx + 1, "bot_id": b["bot_id"], "bot_name": b["bot_name"], "age": b["age"],
             "live_prestige": round(float(b.get("live_prestige", 0.0))),
-            "fitness": ev["fitness"], "recent_6_draws": ev["recent_6_draws"], "recent_total": ev["recent_total"],
-            "latest_6_date": ev["latest_6_date"], "latest_6_period": ev["latest_6_period"],
-            "hit_frequency_pct": ev["hit_frequency_pct"], "holdout_frequency_pct": ev["holdout_frequency_pct"],
-            "winning_draws": ev["winning_draws"], "draws_total": ev["draws_total"],
-            "match_6": ev["match_6"], "match_5": ev["match_5"], "match_4": ev["match_4"],
-        })
-
+            **{k: b["eval"][k] for k in ("fitness", "recent_6_draws", "recent_total", "latest_6_date", "latest_6_period", "hit_frequency_pct", "holdout_frequency_pct", "winning_draws", "draws_total", "match_6", "match_5", "match_4")},
+        }
+        for r_idx, b in enumerate(elites[:6])
+    ]
     c_m6 = set().union(*(s["m6_draws"] for s in elites[0]["eval"].get("head_stats", [])))
     donors = [b for b in ranked[1:] if set().union(*(s["m6_draws"] for s in b["eval"].get("head_stats", []))) - c_m6]
     next_pop: List[Dict[str, Any]] = list(elites)
-    scout_slots = max(2, next_size // 6)
-    c_i = 0
+    scout_slots, c_i = max(2, next_size // 6), 0
     while len(next_pop) < next_size - scout_slots:
         c_i += 1
         pa = elites[0] if (donors and c_i == 1) else elites[(c_i - 1) % len(elites)]
         pb = donors[0] if (donors and c_i == 1) else r.choice(elites)
         next_pop.append(crossover_gladiators(pa, pb, generation + 1, c_i, max_num=max_num, stagnation_gens=stagnation_gens, rng=r))
-
     while len(next_pop) < next_size:
         _, tmpl = r.choice(ARCHETYPE_SEEDS)
-        next_pop.append({
-            "bot_id": f"scout-{generation + 1}-{len(next_pop)}", "tribe_id": "", "bot_name": f"🌱 Tân Binh Thám Hiểm #{generation + 1}",
-            "age": 1, "live_prestige": 0.0, "genome": mutate_genome(tmpl, sigma=0.10, max_num=max_num, rng=r), "eval": None,
-        })
-
+        next_pop.append({"bot_id": f"scout-{generation + 1}-{len(next_pop)}", "tribe_id": "", "bot_name": f"🌱 Tân Binh Thám Hiểm #{generation + 1}", "age": 1, "live_prestige": 0.0, "genome": mutate_genome(tmpl, sigma=0.10, max_num=max_num, rng=r), "eval": None})
     return {"champion": elites[0], "next_population": next_pop, "leaderboard": leaderboard, "culled_count": culled_count, "squad_size": next_size}
