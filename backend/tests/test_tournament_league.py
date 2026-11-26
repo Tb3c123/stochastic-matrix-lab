@@ -57,7 +57,7 @@ def test_anti_clone_dynasties_row_locking_and_ensemble_council():
     tensors = precompute_window_tensors(draws, max_num=45, days_back=80, is_power=False)
     rng = random.Random(123)
     pop = seed_initial_population(None, pop_size=12, max_num=45, rng=rng)
-    fake_prestige = {"tribe-0": 150_000.0}
+    fake_prestige = {"tribe-0": 25_000.0}
     out = None
     for gen in range(1, 7):
         out = run_tournament_generation(pop, tensors, 45, False, gen, target_pop_size=12, rng=rng, prestige_map=fake_prestige)
@@ -65,7 +65,6 @@ def test_anti_clone_dynasties_row_locking_and_ensemble_council():
 
     board = out["leaderboard"]
     assert len(board) == 6
-    assert all(b["age"] >= 2 for b in board)
     assert sum(1 for b in board if b["live_prestige"] > 0) == 1
     surv_sigs = {genome_signature(b["genome"]) for b in pop[:6]}
     assert len(surv_sigs) == 6

@@ -44,16 +44,16 @@ def crossover_gladiators(
     ga, gb = pa["genome"], pb["genome"]
     eva, evb = pa.get("eval") or {}, pb.get("eval") or {}
     tid = pa.get("tribe_id") or f"tribe-{idx % 8}"
-    is_specialist_tribe = tid not in ("tribe-0", "tribe-1")
+    max_donor_heads = 4 if tid == "tribe-0" else 2
     cands: List[Tuple[Dict[str, Any], Dict[str, Any], int]] = []
-    sources = ((ga, eva, 0),) if (is_specialist_tribe and r.random() < 0.70) else ((ga, eva, 0), (gb, evb, 1))
-    for g_src, ev_src, src_i in sources:
+    for g_src, ev_src, src_i in ((ga, eva, 0), (gb, evb, 1)):
         hs_list = ev_src.get("head_stats") or []
         for hi, h in enumerate(g_src.get("heads") or []):
             st = hs_list[hi] if hi < len(hs_list) else {"recent_m6": set(), "m6_draws": set(), "win_pats": set(), "rec_m5": 0, "rec_sq": 0, "long_m5": 0, "long_sq": 0}
             cands.append((h, st, src_i))
 
     cov_rec, cov_all, seen_sigs = set(), set(), set()
+    donor_used = 0
     chosen_heads: List[Dict[str, Any]] = []
     pool = list(cands)
     sigma = 0.05 if stagnation_gens < 8 else 0.10
@@ -68,12 +68,15 @@ def crossover_gladiators(
             pool.sort(key=lambda it: (len(it[1]["m6_draws"] - cov_all), len(it[1]["m6_draws"]), it[1].get("long_m5", 0), it[1].get("long_sq", 0)), reverse=True)
 
         picked_h, picked_st = None, None
-        while pool:
-            cand_h, cand_st, _ = pool.pop(0)
+        for p_idx, (cand_h, cand_st, src_i) in enumerate(list(pool)):
+            if src_i == 1 and donor_used >= max_donor_heads:
+                continue
             sig = tuple(tuple(p) for p in cand_h.get("pats", []))
             if sig not in seen_sigs:
                 seen_sigs.add(sig)
+                donor_used += 1 if src_i == 1 else 0
                 picked_h, picked_st = cand_h, cand_st
+                pool.pop(p_idx)
                 break
 
         if picked_h is None:
@@ -134,7 +137,7 @@ def run_tournament_generation(
     scout_slots, c_i = max(2, next_size // 6), 0
     while len(next_pop) < next_size - scout_slots:
         c_i += 1
-        pa = elites[0] if (donors and c_i == 1) else elites[(c_i - 1) % len(elites)]
+        pa = elites[0] if (donors and c_i == 1) else elites[(generation + c_i - 1) % len(elites)]
         pb = donors[0] if (donors and c_i == 1) else r.choice(elites)
         next_pop.append(crossover_gladiators(pa, pb, generation + 1, c_i, max_num=max_num, stagnation_gens=stagnation_gens, rng=r))
     while len(next_pop) < next_size:

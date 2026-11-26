@@ -6,7 +6,7 @@ from app.analytics.evo_wheel import nums_to_mask, build_deterministic_rows
 
 DATA_DIR = Path("/app/data")
 PRESTIGE_PATH = (DATA_DIR / "live_arena_prestige.json") if DATA_DIR.exists() else Path("/tmp/live_arena_prestige.json")
-PRESTIGE_REWARDS = {6: 15_000_000.0, 5: 2_500_000.0, 4: 600_000.0, 3: 150_000.0}
+PRESTIGE_REWARDS = {6: 15_000_000.0, 5: 2_500_000.0, 4: 400_000.0, 3: 25_000.0}
 
 
 def _read_store() -> Dict[str, Any]:
