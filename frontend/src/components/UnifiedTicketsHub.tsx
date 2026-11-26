@@ -13,7 +13,7 @@ export const UnifiedTicketsHub: React.FC<{
   latestDraw?: any;
   refreshTrigger: number;
 }> = ({ gameCode, latestDraw, refreshTrigger }) => {
-  const [viewMode, setViewMode] = useState<"winning" | "live" | "pending" | "all">("winning");
+  const [viewMode, setViewMode] = useState<"live" | "winning" | "pending" | "all">("live");
   const [tierFilter, setTierFilter] = useState<string>("jackpot_6");
   const [expandedId, setExpandedId] = useState<number | null>(null);
   const [collapsedDates, setCollapsedDates] = useState<Record<string, boolean>>({});
@@ -40,9 +40,9 @@ export const UnifiedTicketsHub: React.FC<{
 
   const horizonLabel = gameCode === "power_6_55" ? "12 Tháng" : "9 Tháng";
   const modeTabs = [
-    { id: "winning" as const, icon: Trophy, label: `Kỳ Độc Đắc 6/6 (${winningTickets.length})` },
     { id: "live" as const, icon: Zap, label: `Thắng Thời Gian Thật` },
     { id: "pending" as const, icon: Clock, label: `Chờ Quay (${pendingTickets.length})` },
+    { id: "winning" as const, icon: Trophy, label: `Hồi Tố 6/6 (${winningTickets.length})` },
     { id: "all" as const, icon: ListChecks, label: `Đủ ${evaluatedGroups.length} Kỳ (${horizonLabel})` },
   ];
 
