@@ -3,3 +3,4 @@
 - [2026-11-25] Draw-day 4-phase lifecycle: 16:30 seals Final Ensemble Council tickets & pauses Arena (0% CPU draw_standby) through 17:45 cutoff until official result lands in DB (~18:35), then auto-scores & resumes.
 - [2026-11-26] Hybrid 2 Raw Genome + 3 Golden 8/8 DNA rows prevents filtering out off-Gauss real draws; live_prestige reads strictly from deduplicated tribe_id ledger; Arena runs continuously in day_eco/night_boost with RAM /arena-logs.
 - [2026-11-26] Meritocratic usurpation (no live_prestige==0 immunity) + (gen+c_i-1)%len(elites) rotated breeding + <=2 shared heads prevents 0/116 zombie tribes on Mega 6/45.
+- [2026-11-26] Specialist tribes use 65/35 weight blend + 2+2+1 row-mix mutation (_blend_and_mutate_head) with 0 shared heads and +1.45M novel-draw niche bonus so recent hits diversify naturally.

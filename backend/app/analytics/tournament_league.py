@@ -24,27 +24,45 @@ def seed_initial_population(
     if base_weights:
         g0 = mutate_genome(base_weights, sigma=0.02, max_num=max_num, rng=r)
         pop.append({"bot_id": "tribe-0", "tribe_id": "tribe-0", "bot_name": tribe_label(0), "age": 1, "live_prestige": 0.0, "genome": g0, "eval": None})
-    start_idx = len(pop)
-    for idx in range(start_idx, pop_size):
+    for idx in range(len(pop), pop_size):
         _, tmpl = ARCHETYPE_SEEDS[idx % len(ARCHETYPE_SEEDS)]
-        is_tribe = idx < (8 if pop_size <= 16 else 20)
+        is_tribe = idx < (6 if pop_size <= 16 else 18)
         tid = f"tribe-{idx}" if is_tribe else f"scout-{idx}"
         nm = tribe_label(idx) if is_tribe else f"🌱 Tân Binh Thám Hiểm #{idx}"
-        g = mutate_genome(tmpl, sigma=0.06, max_num=max_num, rng=r)
-        pop.append({"bot_id": tid, "tribe_id": tid, "bot_name": nm, "age": 1, "live_prestige": 0.0, "genome": g, "eval": None})
+        pop.append({"bot_id": tid, "tribe_id": tid, "bot_name": nm, "age": 1, "live_prestige": 0.0, "genome": mutate_genome(tmpl, sigma=0.06, max_num=max_num, rng=r), "eval": None})
     return pop
+
+
+def _blend_and_mutate_head(
+    own_h: Dict[str, Any], donor_h: Dict[str, Any], max_num: int, sigma: float, rng: random.Random,
+) -> Dict[str, Any]:
+    """Blend 65% own tribe weights + 35% donor weights, mix 2 donor rows + 2 own rows + 1 fresh mutated row."""
+    blended = {"locked": False, "locked_pats": []}
+    for k in ("wh", "wf", "wl", "wm", "wpr"):
+        val = 0.65 * float(own_h.get(k, 0.25)) + 0.35 * float(donor_h.get(k, 0.25)) + rng.gauss(0.0, sigma * 0.6)
+        blended[k] = round(max(0.04, min(0.65, val)), 3)
+    own_pats = [list(p) for p in own_h.get("pats", [])]
+    don_pats = [list(p) for p in donor_h.get("pats", [])]
+    don_idx = list(donor_h.get("locked_pats") or range(len(don_pats)))[:2]
+    mixed = [list(don_pats[i]) for i in don_idx if i < len(don_pats)]
+    for p in own_pats:
+        if len(mixed) < 4 and p not in mixed:
+            mixed.append(list(p))
+    while len(mixed) < 5:
+        mixed.append(sorted(rng.sample(range(max_num), 6)))
+    blended["pats"] = mixed[:5]
+    return mutate_head(blended, max_num=max_num, sigma=sigma, rng=rng)
 
 
 def crossover_gladiators(
     pa: Dict[str, Any], pb: Dict[str, Any], generation: int, idx: int, max_num: int,
     stagnation_gens: int = 0, rng: Optional[random.Random] = None,
 ) -> Dict[str, Any]:
-    """2+2 Horizon Division + Row-Level Locking: preserves winning rows while evolving unlocked rows."""
     r = rng or random
     ga, gb = pa["genome"], pb["genome"]
     eva, evb = pa.get("eval") or {}, pb.get("eval") or {}
-    tid = pa.get("tribe_id") or f"tribe-{idx % 8}"
-    max_donor_heads = 4 if tid == "tribe-0" else 2
+    tid = pa.get("tribe_id") or f"tribe-{idx % 6}"
+    own_heads = ga.get("heads") or [make_specialist_head(ga, max_num=max_num, rng=r) for _ in range(4)]
     cands: List[Tuple[Dict[str, Any], Dict[str, Any], int]] = []
     for g_src, ev_src, src_i in ((ga, eva, 0), (gb, evb, 1)):
         hs_list = ev_src.get("head_stats") or []
@@ -52,8 +70,7 @@ def crossover_gladiators(
             st = hs_list[hi] if hi < len(hs_list) else {"recent_m6": set(), "m6_draws": set(), "win_pats": set(), "rec_m5": 0, "rec_sq": 0, "long_m5": 0, "long_sq": 0}
             cands.append((h, st, src_i))
 
-    cov_rec, cov_all, seen_sigs = set(), set(), set()
-    donor_used = 0
+    cov_rec, cov_all, seen_sigs, donor_used = set(), set(), set(), 0
     chosen_heads: List[Dict[str, Any]] = []
     pool = list(cands)
     sigma = 0.05 if stagnation_gens < 8 else 0.10
@@ -66,39 +83,32 @@ def crossover_gladiators(
             pool.sort(key=lambda it: (len(it[1].get("recent_m6", set()) - cov_rec), it[1].get("rec_m5", 0), it[1].get("rec_sq", 0)), reverse=True)
         else:
             pool.sort(key=lambda it: (len(it[1]["m6_draws"] - cov_all), len(it[1]["m6_draws"]), it[1].get("long_m5", 0), it[1].get("long_sq", 0)), reverse=True)
-
-        picked_h, picked_st = None, None
+        picked_h, picked_st, picked_src = None, None, 0
         for p_idx, (cand_h, cand_st, src_i) in enumerate(list(pool)):
-            if src_i == 1 and donor_used >= max_donor_heads:
+            if tid != "tribe-0" and src_i == 1 and donor_used >= 2:
                 continue
             sig = tuple(tuple(p) for p in cand_h.get("pats", []))
             if sig not in seen_sigs:
                 seen_sigs.add(sig)
                 donor_used += 1 if src_i == 1 else 0
-                picked_h, picked_st = cand_h, cand_st
+                picked_h, picked_st, picked_src = cand_h, cand_st, src_i
                 pool.pop(p_idx)
                 break
-
         if picked_h is None:
             chosen_heads.append(make_specialist_head(ga, max_num=max_num, rng=r))
             continue
-
         gain = len(picked_st.get("recent_m6", set()) - cov_rec) if slot < 2 else len(picked_st["m6_draws"] - cov_all)
         cov_rec |= picked_st.get("recent_m6", set())
         cov_all |= picked_st["m6_draws"]
-        wp = sorted(picked_st.get("win_pats", set())) if gain > 0 else []
-        clone_h = {**picked_h, "locked_pats": wp, "pats": [list(p) for p in picked_h["pats"]]}
-        if gain == 0 and r.random() < 0.25:
-            clone_h = make_specialist_head(ga, max_num=max_num, rng=r)
+        if tid != "tribe-0" and picked_src == 1:
+            clone_h = _blend_and_mutate_head(own_heads[slot % len(own_heads)], picked_h, max_num, sigma, r)
         else:
-            clone_h = mutate_head(clone_h, max_num=max_num, sigma=sigma, rng=r)
+            wp = sorted(picked_st.get("win_pats", set())) if gain > 0 else []
+            clone_h = {**picked_h, "locked_pats": wp, "pats": [list(p) for p in picked_h["pats"]]}
+            clone_h = make_specialist_head(ga, max_num=max_num, rng=r) if (gain == 0 and r.random() < 0.25) else mutate_head(clone_h, max_num=max_num, sigma=sigma, rng=r)
         chosen_heads.append(clone_h)
-
     child_g = mutate_genome({**ga, "heads": chosen_heads}, sigma=sigma, max_num=max_num, rng=r)
-    return {
-        "bot_id": f"gen{generation}-c{idx}", "tribe_id": tid, "bot_name": pa["bot_name"],
-        "age": int(pa.get("age", 1)), "live_prestige": 0.0, "genome": child_g, "eval": None,
-    }
+    return {"bot_id": f"gen{generation}-c{idx}", "tribe_id": tid, "bot_name": pa["bot_name"], "age": int(pa.get("age", 1)), "live_prestige": 0.0, "genome": child_g, "eval": None}
 
 
 def run_tournament_generation(
@@ -113,15 +123,7 @@ def run_tournament_generation(
         if bot.get("eval") is None:
             bot["eval"] = evaluate_genome_fast(bot["genome"], tensors, max_num=max_num, is_power=is_power)
 
-    ranked = sorted(
-        population,
-        key=lambda b: (
-            b["eval"]["fitness"] + float((prestige_map or {}).get(str(b.get("tribe_id") or ""), b.get("live_prestige", 0.0))),
-            b["eval"]["winning_draws"],
-            b["eval"]["recent_6_draws"],
-        ),
-        reverse=True,
-    )
+    ranked = sorted(population, key=lambda b: (b["eval"]["fitness"] + float((prestige_map or {}).get(str(b.get("tribe_id") or ""), b.get("live_prestige", 0.0))), b["eval"]["winning_draws"]), reverse=True)
     elites, culled_count = select_diverse_dynasties(ranked, next_size, r, prestige_map=prestige_map)
     leaderboard = [
         {

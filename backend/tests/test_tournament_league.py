@@ -9,7 +9,7 @@ from app.database import init_db, AsyncSessionLocal
 from app.models.ticket import SavedTicket
 from app.analytics.evo_wheel import nums_to_mask
 from app.analytics.evo_engine import precompute_window_tensors, mutate_genome, mutate_head, evaluate_genome_fast
-from app.analytics.lineage_guard import genome_signature
+from app.analytics.lineage_guard import genome_signature, head_block_sigs
 from app.analytics.ensemble_council import build_ensemble_ticket_plans
 from app.analytics.tournament_league import seed_initial_population, run_tournament_generation
 from app.services.alpha_ticket_builder import is_upcoming_draw_locked
@@ -68,6 +68,9 @@ def test_anti_clone_dynasties_row_locking_and_ensemble_council():
     assert sum(1 for b in board if b["live_prestige"] > 0) == 1
     surv_sigs = {genome_signature(b["genome"]) for b in pop[:6]}
     assert len(surv_sigs) == 6
+    for i in range(6):
+        for j in range(i + 1, 6):
+            assert len(head_block_sigs(pop[i]["genome"]) & head_block_sigs(pop[j]["genome"])) == 0
 
     h0 = {"wh": 0.30, "wf": 0.20, "wl": 0.30, "wm": 0.25, "wpr": 0.20, "locked_pats": [0, 3], "pats": [[1, 2, 3, 4, 5, 6], [2, 4, 6, 8, 10, 12], [3, 6, 9, 12, 15, 18], [0, 5, 10, 15, 20, 25], [7, 11, 13, 17, 19, 23]]}
     for _ in range(10):
