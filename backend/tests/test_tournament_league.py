@@ -69,15 +69,14 @@ def test_anti_clone_dynasties_row_locking_and_ensemble_council():
     surv_sigs = {genome_signature(b["genome"]) for b in pop[:6]}
     assert len(surv_sigs) == 6
     for i in range(6):
+        for h in pop[i]["genome"]["heads"]:
+            assert "pats" not in h and "locked_pats" not in h
         for j in range(i + 1, 6):
             assert len(head_block_sigs(pop[i]["genome"]) & head_block_sigs(pop[j]["genome"])) == 0
 
-    h0 = {"wh": 0.30, "wf": 0.20, "wl": 0.30, "wm": 0.25, "wpr": 0.20, "locked_pats": [0, 3], "pats": [[1, 2, 3, 4, 5, 6], [2, 4, 6, 8, 10, 12], [3, 6, 9, 12, 15, 18], [0, 5, 10, 15, 20, 25], [7, 11, 13, 17, 19, 23]]}
-    for _ in range(10):
-        mh = mutate_head(h0, max_num=45, rng=rng)
-        assert mh["pats"][0] == [1, 2, 3, 4, 5, 6]
-        assert mh["pats"][3] == [0, 5, 10, 15, 20, 25]
-        assert mh["wh"] == 0.30 and mh["wl"] == 0.30
+    h0 = {"wh": 0.30, "wf": 0.20, "wl": 0.30, "wm": 0.25, "wpr": 0.20, "pool_k": 20, "stride": 5, "offset": 2}
+    mh = mutate_head(h0, max_num=45, rng=rng)
+    assert "pats" not in mh and 14 <= mh["pool_k"] <= 26
 
     plans = build_ensemble_ticket_plans("mega_6_45", pop, tensors[-1], 45, False)
     assert [p["council_source"] for p in plans] == ["king", "runner_up", "consensus", "maverick"]

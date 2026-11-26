@@ -3,8 +3,8 @@ import random
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional
 from app.analytics.evo_wheel import (
-    nums_to_mask, mask_to_nums, build_feature_step,
-    make_specialist_head, build_deterministic_rows,
+    STRIDE_CHOICES, nums_to_mask, mask_to_nums, build_feature_step,
+    make_specialist_head, rank_balls_for_head, build_deterministic_rows,
 )
 
 
@@ -28,35 +28,31 @@ def precompute_window_tensors(all_draws: List[Any], max_num: int, days_back: int
     return tensors
 
 
-def mutate_head(head: Dict[str, Any], max_num: int, sigma: float = 0.05, rng: Optional[random.Random] = None) -> Dict[str, Any]:
-    r = rng or random
-    lp = set(head.get("locked_pats") or [])
-    nh = {**head, "locked": False, "locked_pats": sorted(lp), "pats": [list(p) for p in head["pats"]]}
-    free_rows = [ri for ri in range(len(nh["pats"])) if ri not in lp]
-    if not lp and r.random() < 0.14:
-        k = r.choice(["wh", "wf", "wl", "wm", "wpr"])
-        nh[k] = round(max(0.04, min(0.65, float(nh.get(k, 0.25)) + r.gauss(0.0, sigma))), 3)
-    elif free_rows:
-        max_edits = 3 if max_num >= 55 else 2
-        for _ in range(1 if r.random() < 0.65 else max_edits):
-            ri, pi, cand = r.choice(free_rows), r.randrange(6), r.randrange(max_num)
-            if cand not in nh["pats"][ri]:
-                nh["pats"][ri][pi] = cand
-                nh["pats"][ri].sort()
-    elif nh["pats"]:
-        # All 5 rows locked on parent -> on child copy, unlock 1 row to hunt multi-draw >20 6/6 hits!
-        ri, pi, cand = r.randrange(len(nh["pats"])), r.randrange(6), r.randrange(max_num)
-        nh["locked_pats"] = [x for x in nh["locked_pats"] if x != ri]
-        if cand not in nh["pats"][ri]:
-            nh["pats"][ri][pi] = cand
-            nh["pats"][ri].sort()
+def mutate_head(head: Dict[str, Any], max_num: int, sigma: float = 0.06, rng: Optional[random.Random] = None) -> Dict[str, Any]:
+    """Mutate ONLY mathematical ranking weights & funnel wheel parameters (zero index memorization)."""
+    r = rng or random.SystemRandom()
+    nh = {
+        "wh": float(head.get("wh", 0.26)), "wf": float(head.get("wf", 0.20)),
+        "wl": float(head.get("wl", 0.30)), "wm": float(head.get("wm", 0.24)),
+        "wpr": float(head.get("wpr", 0.18)), "pool_k": int(head.get("pool_k", 20)),
+        "stride": int(head.get("stride", 5)), "offset": int(head.get("offset", 0)),
+    }
+    for k in r.sample(["wh", "wf", "wl", "wm", "wpr"], 2):
+        nh[k] = round(max(0.04, min(0.65, nh[k] + r.gauss(0.0, sigma))), 3)
+    lo_k, hi_k = (16, 30) if max_num >= 55 else (14, 26)
+    if r.random() < 0.45:
+        nh["pool_k"] = max(lo_k, min(hi_k, nh["pool_k"] + r.choice([-3, -2, -1, 1, 2, 3])))
+    if r.random() < 0.35:
+        nh["stride"] = r.choice(STRIDE_CHOICES)
+    if r.random() < 0.55:
+        nh["offset"] = (nh["offset"] + r.randint(1, 7)) % 12
     return nh
 
 
 def mutate_genome(
     parent: Dict[str, Any], sigma: float = 0.06, max_num: int = 45, rng: Optional[random.Random] = None,
 ) -> Dict[str, Any]:
-    r = rng or random
+    r = rng or random.SystemRandom()
     wh = max(0.10, min(0.55, float(parent.get("w_hot", 0.25)) + r.gauss(0.0, sigma)))
     wl = max(0.12, min(0.55, float(parent.get("w_lateness", 0.35)) + r.gauss(0.0, sigma)))
     wg = max(0.10, min(0.40, float(parent.get("w_gauss_sum", 0.25)) + r.gauss(0.0, sigma * 0.8)))
@@ -67,9 +63,8 @@ def mutate_genome(
 
     old_heads = parent.get("heads")
     if old_heads:
-        new_heads = [dict(h, pats=[list(p) for p in h["pats"]]) for h in old_heads]
-        free_idx = [i for i, h in enumerate(new_heads) if len(h.get("locked_pats") or []) < len(h.get("pats", []))]
-        hi = r.choice(free_idx) if free_idx else r.randrange(len(new_heads))
+        new_heads = [dict(h) for h in old_heads]
+        hi = r.randrange(len(new_heads))
         new_heads[hi] = mutate_head(new_heads[hi], max_num=max_num, sigma=sigma, rng=r)
     else:
         new_heads = [make_specialist_head(parent, max_num=max_num, rng=r) for _ in range(4)]
@@ -78,7 +73,7 @@ def mutate_genome(
     return {
         "w_hot": wh, "w_lateness": wl, "w_gauss_sum": wg, "w_parity": wp,
         "w_hot_fast": h0["wf"], "w_markov": h0["wm"], "w_pair": h0["wpr"],
-        "pool_size": max_num, "wheel_stride": 5, "max_overlap": 2, "heads": new_heads,
+        "pool_size": h0.get("pool_k", 20), "wheel_stride": h0.get("stride", 5), "max_overlap": 3, "heads": new_heads,
     }
 
 
@@ -86,8 +81,9 @@ def evaluate_genome_fast(
     genome: Dict[str, Any], tensors: List[Dict[str, Any]], max_num: int,
     is_power: bool = False, rows_per_draw: int = 20, rng: Optional[random.Random] = None,
 ) -> Dict[str, Any]:
+    """Evaluate genuine predictive generalization: Top-15 probability funnel density + natural 3/4/5/6 hits."""
     jp2 = m5 = m4 = m3 = 0
-    rec_m5 = rec_m4 = long_sq = 0.0
+    rec_m5 = rec_m4 = funnel_score = 0.0
     total_draws = max(1, len(tensors))
     rec_span = min(total_draws, 30)
     z1_start = max(0, total_draws - rec_span)
@@ -95,25 +91,30 @@ def evaluate_genome_fast(
     m6_draws, recent_m6 = set(), set()
     latest_6_period, latest_6_date = "", ""
     heads = genome.get("heads") or []
-    head_stats = [{"recent_m6": set(), "m6_draws": set(), "win_pats": set(), "rec_m5": 0, "rec_sq": 0, "long_m5": 0, "long_sq": 0} for _ in range(max(4, len(heads)))]
+    head_stats = [{"recent_m6": set(), "m6_draws": set(), "rec_m5": 0, "rec_sq": 0.0, "long_m5": 0, "long_sq": 0.0} for _ in range(max(4, len(heads)))]
     best_hit: Dict[str, Any] = {"match_count": 0, "matched_special": False, "draw_period": "", "row": []}
     traces: List[Dict[str, Any]] = []
 
     for idx, step in enumerate(tensors):
         row_masks, sp_picks = build_deterministic_rows(genome, step, max_num, is_power, rows_per_draw)
         win_mask, sp_target, in_rec = step["win_mask"], step["special_num"], idx >= z1_start
+        rec_mult = 1.0 + 2.2 * math.exp(-0.06 * (total_draws - 1 - idx))
+        for hi, h in enumerate(heads):
+            top15 = nums_to_mask(rank_balls_for_head(h, step, max_num)[:15])
+            fh = (top15 & win_mask).bit_count()
+            f_pts = (fh * fh) * (12.0 * rec_mult)
+            funnel_score += f_pts
+            head_stats[hi]["long_sq"] += f_pts
+            if in_rec:
+                head_stats[hi]["rec_sq"] += f_pts
+
         for r_i, (cm, cand_sp) in enumerate(zip(row_masks, sp_picks)):
             mc = (cm & win_mask).bit_count()
             m_sp = bool(is_power and sp_target and cand_sp == sp_target)
             hs = head_stats[min(r_i // 5, len(head_stats) - 1)]
-            sq = mc * mc
-            long_sq, hs["long_sq"] = long_sq + sq, hs["long_sq"] + sq
-            if in_rec:
-                hs["rec_sq"] += sq * (idx - z1_start + 2)
             if mc == 6:
                 m6_draws.add(idx)
                 hs["m6_draws"].add(idx)
-                hs["win_pats"].add(r_i % 5)
                 latest_6_period, latest_6_date = step["draw_period"], step["draw_date"]
                 if in_rec:
                     recent_m6.add(idx)
@@ -131,12 +132,8 @@ def evaluate_genome_fast(
         traces.append({"draw_period": step["draw_period"], "row_masks": row_masks, "sp_picks": sp_picks})
 
     win_6_cnt, rec_6_cnt = len(m6_draws), len(recent_m6)
-    for h_i, h in enumerate(heads):
-        wp = sorted(head_stats[h_i]["win_pats"])
-        h["locked_pats"], h["locked"] = wp, len(wp) >= len(h.get("pats", []))
-    # Smooth exponential recency reward across ALL draws (no hard 15-draw wall!)
-    m6_score = sum(1_000_000.0 * (1.0 + 2.8 * math.exp(-0.06 * (total_draws - 1 - d_i))) for d_i in m6_draws)
-    fitness = round(m6_score + (rec_m5 * 2_500.0) + (m5 * 800.0) + (rec_m4 * 45.0) + (m4 * 15.0) + (long_sq * 0.04), 2)
+    m6_score = sum(1_000_000.0 * (1.0 + 2.5 * math.exp(-0.06 * (total_draws - 1 - d_i))) for d_i in m6_draws)
+    fitness = round(m6_score + (rec_m5 * 18_000.0) + (m5 * 6_000.0) + (rec_m4 * 450.0) + (m4 * 180.0) + (m3 * 20.0) + funnel_score, 2)
     return {
         "genome": genome, "fitness": fitness, "winning_draws": win_6_cnt, "draws_total": total_draws,
         "recent_6_draws": rec_6_cnt, "recent_total": recent_total, "latest_6_period": latest_6_period, "latest_6_date": latest_6_date,

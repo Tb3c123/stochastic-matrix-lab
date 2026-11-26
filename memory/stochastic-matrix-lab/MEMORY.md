@@ -4,3 +4,4 @@
 - [2026-11-26] Hybrid 2 Raw Genome + 3 Golden 8/8 DNA rows prevents filtering out off-Gauss real draws; live_prestige reads strictly from deduplicated tribe_id ledger; Arena runs continuously in day_eco/night_boost with RAM /arena-logs.
 - [2026-11-26] Meritocratic usurpation (no live_prestige==0 immunity) + (gen+c_i-1)%len(elites) rotated breeding + <=2 shared heads prevents 0/116 zombie tribes on Mega 6/45.
 - [2026-11-26] Specialist tribes use 65/35 weight blend + 2+2+1 row-mix mutation (_blend_and_mutate_head) with 0 shared heads and +1.45M novel-draw niche bonus so recent hits diversify naturally.
+- [2026-11-26] Anti-Rote Competition Rules: removed all static pats/locked_pats index memorization; heads evolve only mathematical weights + funnel wheel (pool_k/stride/offset) and every new draw resets to a 100% fresh SystemRandom season.

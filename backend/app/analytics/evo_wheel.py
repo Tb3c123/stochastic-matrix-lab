@@ -5,6 +5,8 @@ from app.analytics.markov_features import (
     compute_lag1_markov_scores, compute_special_ball_scores,
 )
 
+STRIDE_CHOICES = (3, 5, 7, 9, 11)
+
 
 def nums_to_mask(nums: List[int]) -> int:
     mask = 0
@@ -45,14 +47,18 @@ def build_feature_step(hist: List[Dict[str, Any]], max_num: int, is_power: bool)
 
 
 def make_specialist_head(base: Dict[str, Any], max_num: int, rng: Optional[random.Random] = None) -> Dict[str, Any]:
-    r = rng or random
+    """Pure mathematical specialist head (ZERO memorized index patterns — anti-rote by construction)."""
+    r = rng or random.SystemRandom()
+    lo_k, hi_k = (16, 30) if max_num >= 55 else (14, 26)
     return {
-        "wh": round(max(0.05, min(0.65, float(base.get("w_hot", 0.28)) + r.gauss(0, 0.06))), 3),
-        "wf": round(max(0.04, min(0.55, float(base.get("w_hot_fast", 0.20)) + r.gauss(0, 0.06))), 3),
-        "wl": round(max(0.05, min(0.65, float(base.get("w_lateness", 0.32)) + r.gauss(0, 0.06))), 3),
-        "wm": round(max(0.05, min(0.60, float(base.get("w_markov", 0.25)) + r.gauss(0, 0.06))), 3),
-        "wpr": round(max(0.04, min(0.50, float(base.get("w_pair", 0.18)) + r.gauss(0, 0.06))), 3),
-        "pats": [sorted(r.sample(range(max_num), 6)) for _ in range(5)],
+        "wh": round(max(0.05, min(0.65, float(base.get("w_hot", 0.28)) + r.gauss(0, 0.08))), 3),
+        "wf": round(max(0.04, min(0.55, float(base.get("w_hot_fast", 0.20)) + r.gauss(0, 0.08))), 3),
+        "wl": round(max(0.05, min(0.65, float(base.get("w_lateness", 0.32)) + r.gauss(0, 0.08))), 3),
+        "wm": round(max(0.05, min(0.60, float(base.get("w_markov", 0.25)) + r.gauss(0, 0.08))), 3),
+        "wpr": round(max(0.04, min(0.50, float(base.get("w_pair", 0.18)) + r.gauss(0, 0.08))), 3),
+        "pool_k": r.randint(lo_k, hi_k),
+        "stride": r.choice(STRIDE_CHOICES),
+        "offset": r.randint(0, 11),
     }
 
 
@@ -71,74 +77,69 @@ def rank_balls_for_head(head: Dict[str, Any], step: Dict[str, Any], max_num: int
         key=lambda n: (wh * ew[n] + wf * ef[n] + wl * hz[n] + wm * mk[n] + wpr * pr[n], -n),
         reverse=True,
     )
-    if len(rcache) >= 96:
+    if len(rcache) >= 128:
         rcache.clear()
     rcache[wkey] = ranked
     return ranked
 
 
-def _diversify_mask(raw_mask: int, ranked: List[int], prev_masks: List[int], row_seed: int, max_ov: int = 5) -> int:
-    if raw_mask.bit_count() == 6 and all((raw_mask & pm).bit_count() <= max_ov for pm in prev_masks):
-        return raw_mask
-    n_len = len(ranked)
-    chosen_mask = 0
-    chosen_cnt = 0
-    start = (row_seed * 7) % n_len
-    stride = ((row_seed % 5) * 2) + 1
-    # Keep up to 3 non-conflicting balls from raw_mask first
-    for b in ranked:
-        if ((raw_mask >> b) & 1) and chosen_cnt < 3:
-            trial = chosen_mask | (1 << b)
-            if all((trial & pm).bit_count() <= max_ov for pm in prev_masks):
-                chosen_mask, chosen_cnt = trial, chosen_cnt + 1
+def _wheel_row_from_funnel(
+    funnel: List[int], full_ranked: List[int], prev_masks: List[int], start_pos: int, stride: int, max_ov: int = 3,
+) -> int:
+    n_len = len(funnel)
+    chosen_mask = chosen_cnt = 0
     for j in range(n_len * 2):
         if chosen_cnt == 6:
             break
-        cand = ranked[(start + j * stride) % n_len]
+        cand = funnel[(start_pos + j * stride) % n_len]
         if (chosen_mask >> cand) & 1:
             continue
         trial = chosen_mask | (1 << cand)
         cap = max_ov if j < n_len else 4
         if all((trial & pm).bit_count() <= cap for pm in prev_masks):
             chosen_mask, chosen_cnt = trial, chosen_cnt + 1
-    for cand in ranked:
+    for k in range(len(full_ranked)):
         if chosen_cnt == 6:
             break
+        cand = full_ranked[(start_pos + k) % len(full_ranked)]
         if not ((chosen_mask >> cand) & 1):
-            chosen_mask, chosen_cnt = chosen_mask | (1 << cand), chosen_cnt + 1
+            trial = chosen_mask | (1 << cand)
+            if chosen_cnt < 5 or trial not in prev_masks:
+                chosen_mask, chosen_cnt = trial, chosen_cnt + 1
     return chosen_mask
 
 
 def build_deterministic_rows(
     genome: Dict[str, Any], step: Dict[str, Any], max_num: int, is_power: bool = False, rows_per_draw: int = 20,
 ) -> Tuple[List[int], List[Optional[int]]]:
-    heads = genome.get("heads")
+    """Generate structured covering-wheel rows strictly from each head's probability funnel (zero memorized pats)."""
+    heads = genome.get("heads") or [
+        {"wh": genome.get("w_hot", 0.25), "wf": genome.get("w_hot_fast", 0.18), "wl": genome.get("w_lateness", 0.35), "wm": genome.get("w_markov", 0.22), "wpr": genome.get("w_pair", 0.16), "pool_k": 20, "stride": 5, "offset": 0}
+    ]
     sp_ranked = sorted(range(1, 56), key=lambda n: (step["sp_scores"].get(n, 0.5), -n), reverse=True) if is_power else []
     row_masks: List[int] = []
     sp_picks: List[Optional[int]] = []
 
-    if heads:
-        for h_idx, h in enumerate(heads):
-            ranked = rank_balls_for_head(h, step, max_num)
-            for p_idx, pat in enumerate(h.get("pats", [])):
-                raw_m = 0
-                for pos in pat:
-                    raw_m |= (1 << ranked[pos % max_num])
-                cm = _diversify_mask(raw_m, ranked, row_masks, h_idx * 5 + p_idx, max_ov=5)
-                row_masks.append(cm)
-                r_idx = len(sp_picks)
-                sp_picks.append(next((s for s in sp_ranked[(r_idx % 8):] + sp_ranked if not ((cm >> s) & 1)), 1) if is_power else None)
-                if len(row_masks) >= rows_per_draw:
-                    return row_masks, sp_picks
+    per_head = max(1, rows_per_draw // max(1, len(heads)))
+    for h_idx, h in enumerate(heads):
+        ranked = rank_balls_for_head(h, step, max_num)
+        pk = max(12, min(max_num, int(h.get("pool_k", 20))))
+        funnel = ranked[:pk]
+        stride = int(h.get("stride", 5)) or 5
+        offset = int(h.get("offset", h_idx * 2))
+        for p_idx in range(per_head):
+            start_pos = (offset + p_idx * stride + h_idx * 3) % pk
+            cm = _wheel_row_from_funnel(funnel, ranked, row_masks, start_pos, stride, max_ov=3)
+            row_masks.append(cm)
+            r_idx = len(sp_picks)
+            sp_picks.append(next((s for s in sp_ranked[(r_idx % 8):] + sp_ranked if not ((cm >> s) & 1)), 1) if is_power else None)
+            if len(row_masks) >= rows_per_draw:
+                return row_masks, sp_picks
 
-    fallback_head = {
-        "wh": genome.get("w_hot", 0.25), "wf": genome.get("w_hot_fast", 0.18),
-        "wl": genome.get("w_lateness", 0.35), "wm": genome.get("w_markov", 0.22), "wpr": genome.get("w_pair", 0.16),
-    }
-    ranked = rank_balls_for_head(fallback_head, step, max_num)
+    ranked = rank_balls_for_head(heads[0], step, max_num)
     while len(row_masks) < rows_per_draw:
         r_i = len(row_masks)
-        cm = _diversify_mask(0, ranked, row_masks, r_i + 1, max_ov=3)
+        cm = _wheel_row_from_funnel(ranked[:min(24, max_num)], ranked, row_masks, r_i * 3, 5, max_ov=3)
         row_masks.append(cm)
         sp_picks.append(next((s for s in sp_ranked[(r_i % 8):] + sp_ranked if not ((cm >> s) & 1)), 1) if is_power else None)
     return row_masks, sp_picks
