@@ -107,7 +107,7 @@ def test_draw_freeze_and_elastic_schedule():
     assert resolve_horizon_days("mega_6_45", 0) == 270
     assert resolve_horizon_days("power_6_55", 0) == 365
     assert compute_thermal_pacing(0, 5, 10.0, t_0700, total_6_draws=1) == ("warmup", 0.06)
-    assert compute_thermal_pacing(2, 99999, 500.0, t_0700, total_6_draws=20) == ("day_eco", 2.5)
+    assert compute_thermal_pacing(2, 99999, 500.0, t_0700, total_6_draws=20) == ("day_eco", 4.2)
 
 
 @pytest.mark.asyncio

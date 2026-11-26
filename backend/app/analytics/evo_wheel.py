@@ -4,6 +4,7 @@ from app.analytics.markov_features import (
     compute_ewma_hot_posterior, compute_hazard_lateness_scores,
     compute_lag1_markov_scores, compute_special_ball_scores,
 )
+from app.analytics.evo_sniper_wheel import wheel_row_from_funnel, sniper_closure_row
 
 STRIDE_CHOICES = (3, 5, 7, 9, 11)
 
@@ -83,36 +84,10 @@ def rank_balls_for_head(head: Dict[str, Any], step: Dict[str, Any], max_num: int
     return ranked
 
 
-def _wheel_row_from_funnel(
-    funnel: List[int], full_ranked: List[int], prev_masks: List[int], start_pos: int, stride: int, max_ov: int = 3,
-) -> int:
-    n_len = len(funnel)
-    chosen_mask = chosen_cnt = 0
-    for j in range(n_len * 2):
-        if chosen_cnt == 6:
-            break
-        cand = funnel[(start_pos + j * stride) % n_len]
-        if (chosen_mask >> cand) & 1:
-            continue
-        trial = chosen_mask | (1 << cand)
-        cap = max_ov if j < n_len else 4
-        if all((trial & pm).bit_count() <= cap for pm in prev_masks):
-            chosen_mask, chosen_cnt = trial, chosen_cnt + 1
-    for k in range(len(full_ranked)):
-        if chosen_cnt == 6:
-            break
-        cand = full_ranked[(start_pos + k) % len(full_ranked)]
-        if not ((chosen_mask >> cand) & 1):
-            trial = chosen_mask | (1 << cand)
-            if chosen_cnt < 5 or trial not in prev_masks:
-                chosen_mask, chosen_cnt = trial, chosen_cnt + 1
-    return chosen_mask
-
-
 def build_deterministic_rows(
     genome: Dict[str, Any], step: Dict[str, Any], max_num: int, is_power: bool = False, rows_per_draw: int = 20,
 ) -> Tuple[List[int], List[Optional[int]]]:
-    """Generate structured covering-wheel rows strictly from each head's probability funnel (zero memorized pats)."""
+    """2-phase pure-math wheel per head: 3 Explore Core + 2 Sniper 6/6 Closure (zero memorized pats)."""
     heads = genome.get("heads") or [
         {"wh": genome.get("w_hot", 0.25), "wf": genome.get("w_hot_fast", 0.18), "wl": genome.get("w_lateness", 0.35), "wm": genome.get("w_markov", 0.22), "wpr": genome.get("w_pair", 0.16), "pool_k": 20, "stride": 5, "offset": 0}
     ]
@@ -127,9 +102,14 @@ def build_deterministic_rows(
         funnel = ranked[:pk]
         stride = int(h.get("stride", 5)) or 5
         offset = int(h.get("offset", h_idx * 2))
+        head_masks: List[int] = []
         for p_idx in range(per_head):
-            start_pos = (offset + p_idx * stride + h_idx * 3) % pk
-            cm = _wheel_row_from_funnel(funnel, ranked, row_masks, start_pos, stride, max_ov=3)
+            if p_idx < 3:
+                start_pos = (offset + p_idx * stride + h_idx * 3) % pk
+                cm = wheel_row_from_funnel(funnel, ranked, head_masks, row_masks, start_pos, stride, max_ov=3)
+            else:
+                cm = sniper_closure_row(funnel, ranked, row_masks, p_idx - 3, stride, offset)
+            head_masks.append(cm)
             row_masks.append(cm)
             r_idx = len(sp_picks)
             sp_picks.append(next((s for s in sp_ranked[(r_idx % 8):] + sp_ranked if not ((cm >> s) & 1)), 1) if is_power else None)
@@ -139,7 +119,7 @@ def build_deterministic_rows(
     ranked = rank_balls_for_head(heads[0], step, max_num)
     while len(row_masks) < rows_per_draw:
         r_i = len(row_masks)
-        cm = _wheel_row_from_funnel(ranked[:min(24, max_num)], ranked, row_masks, r_i * 3, 5, max_ov=3)
+        cm = wheel_row_from_funnel(ranked[:min(24, max_num)], ranked, row_masks[-3:], row_masks, r_i * 3, 5, max_ov=4)
         row_masks.append(cm)
         sp_picks.append(next((s for s in sp_ranked[(r_i % 8):] + sp_ranked if not ((cm >> s) & 1)), 1) if is_power else None)
     return row_masks, sp_picks

@@ -8,11 +8,9 @@ import { WinningTicketCard } from "./winning-history/WinningTicketCard";
 import { SavedTicketCard } from "./saved-tickets/SavedTicketCard";
 import { DateGroupAccordion } from "./saved-tickets/DateGroupAccordion";
 
-export const UnifiedTicketsHub: React.FC<{
-  gameCode: string;
-  latestDraw?: any;
-  refreshTrigger: number;
-}> = ({ gameCode, latestDraw, refreshTrigger }) => {
+export const UnifiedTicketsHub: React.FC<{ gameCode: string; latestDraw?: any; refreshTrigger: number }> = ({
+  gameCode, latestDraw, refreshTrigger,
+}) => {
   const [viewMode, setViewMode] = useState<"live" | "winning" | "pending" | "all">("live");
   const [tierFilter, setTierFilter] = useState<string>("jackpot_6");
   const [expandedId, setExpandedId] = useState<number | null>(null);
@@ -20,19 +18,11 @@ export const UnifiedTicketsHub: React.FC<{
   const [openRowAudits, setOpenRowAudits] = useState<Record<string, boolean>>({});
 
   const effectiveTier = viewMode === "live" ? "live_real_time" : tierFilter;
-  const {
-    loading,
-    summary,
-    winningTickets,
-    totalWinningRowsCount,
-    pendingTickets,
-    evaluatedGroups,
-  } = useUnifiedTickets(gameCode, effectiveTier, refreshTrigger);
+  const { loading, summary, winningTickets, totalWinningRowsCount, pendingTickets, liveEvaluatedGroups, evaluatedGroups } =
+    useUnifiedTickets(gameCode, effectiveTier, refreshTrigger);
 
-  const toggleRowAudit = (ticketId: number, rowIdx: number) => {
-    const key = `${ticketId}-${rowIdx}`;
-    setOpenRowAudits((p) => ({ ...p, [key]: !p[key] }));
-  };
+  const toggleRowAudit = (ticketId: number, rowIdx: number) =>
+    setOpenRowAudits((p) => ({ ...p, [`${ticketId}-${rowIdx}`]: !p[`${ticketId}-${rowIdx}`] }));
 
   if (loading && winningTickets.length === 0 && pendingTickets.length === 0) {
     return <div className="h-64 rounded-2xl bg-white border border-slate-200 animate-pulse" />;
@@ -40,11 +30,25 @@ export const UnifiedTicketsHub: React.FC<{
 
   const horizonLabel = gameCode === "power_6_55" ? "12 Tháng" : "9 Tháng";
   const modeTabs = [
-    { id: "live" as const, icon: Zap, label: `Thắng Thời Gian Thật` },
+    { id: "live" as const, icon: Zap, label: `Thắng Thời Gian Thật (${liveEvaluatedGroups.length} kỳ)` },
     { id: "pending" as const, icon: Clock, label: `Chờ Quay (${pendingTickets.length})` },
     { id: "winning" as const, icon: Trophy, label: `Hồi Tố 6/6 (${winningTickets.length})` },
     { id: "all" as const, icon: ListChecks, label: `Đủ ${evaluatedGroups.length} Kỳ (${horizonLabel})` },
   ];
+
+  const renderGroupList = (groups: [string, any][], prefix: string) =>
+    groups.map(([key, group]) => (
+      <DateGroupAccordion
+        key={`${prefix}-${key}`}
+        group={group}
+        isCollapsed={!!collapsedDates[`${prefix}-${group.period}`]}
+        onToggleCollapse={() => setCollapsedDates((p) => ({ ...p, [`${prefix}-${group.period}`]: !p[`${prefix}-${group.period}`] }))}
+        expandedId={expandedId}
+        onToggleExpandTicket={(id) => setExpandedId(expandedId === id ? null : id)}
+        openRowAudits={openRowAudits}
+        onToggleRowAudit={toggleRowAudit}
+      />
+    ));
 
   return (
     <section className="space-y-6">
@@ -94,20 +98,34 @@ export const UnifiedTicketsHub: React.FC<{
           summary={summary}
           totalWinningRowsCount={totalWinningRowsCount}
           selectedTierFilter={effectiveTier}
+          isLiveMode={viewMode === "live"}
           onSelectTierFilter={(t) => {
             setTierFilter(t);
-            setViewMode("winning");
+            if (viewMode !== "live") setViewMode("winning");
           }}
         />
       </div>
 
-      {(viewMode === "winning" || viewMode === "live") && (
+      {viewMode === "live" && (
+        <div className="space-y-4">
+          {winningTickets.map((t) => (
+            <WinningTicketCard key={t.id} ticket={t} isExpanded={expandedId === t.id} onToggleExpand={() => setExpandedId(expandedId === t.id ? null : t.id)} />
+          ))}
+          {liveEvaluatedGroups.length === 0 ? (
+            <div className="rounded-2xl bg-white border border-slate-200 p-8 text-center text-sm text-slate-500">
+              Chưa có kỳ quay thật nào được đối soát (hệ thống sẽ tự lưu vĩnh viễn ngay từ kỳ mở thưởng tiếp theo).
+            </div>
+          ) : (
+            renderGroupList(liveEvaluatedGroups, "live")
+          )}
+        </div>
+      )}
+
+      {viewMode === "winning" && (
         <div className="space-y-4">
           {winningTickets.length === 0 ? (
             <div className="rounded-2xl bg-white border border-slate-200 p-8 text-center text-sm text-slate-500">
-              {viewMode === "live"
-                ? "Chưa có vé khóa chốt trước 17:45 nào nổ giải ở giờ quay thật (hệ thống sẽ tự lưu vĩnh viễn ngay từ kỳ mở thưởng tiếp theo)."
-                : "Đang công phá các kỳ Độc Đắc 6/6 sát hiện tại..."}
+              Đang công phá các kỳ Độc Đắc 6/6 sát hiện tại...
             </div>
           ) : (
             winningTickets.map((t) => (
@@ -125,22 +143,7 @@ export const UnifiedTicketsHub: React.FC<{
         </div>
       )}
 
-      {viewMode === "all" && (
-        <div className="space-y-5">
-          {evaluatedGroups.map(([key, group]) => (
-            <DateGroupAccordion
-              key={key}
-              group={group}
-              isCollapsed={!!collapsedDates[group.period]}
-              onToggleCollapse={() => setCollapsedDates((p) => ({ ...p, [group.period]: !p[group.period] }))}
-              expandedId={expandedId}
-              onToggleExpandTicket={(id) => setExpandedId(expandedId === id ? null : id)}
-              openRowAudits={openRowAudits}
-              onToggleRowAudit={toggleRowAudit}
-            />
-          ))}
-        </div>
-      )}
+      {viewMode === "all" && <div className="space-y-5">{renderGroupList(evaluatedGroups, "bt")}</div>}
     </section>
   );
 };

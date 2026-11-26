@@ -36,9 +36,19 @@ def _bot_m6_set(bot: Dict[str, Any]) -> Set[int]:
     return set().union(*(s.get("m6_draws", set()) for s in (bot.get("eval") or {}).get("head_stats", [])))
 
 
-def _niche_score(bot: Dict[str, Any], king_m6: Set[int]) -> float:
-    novel = len(_bot_m6_set(bot) - king_m6)
-    return float(bot["eval"]["fitness"]) + float(bot.get("live_prestige", 0.0)) + (novel * 1_450_000.0)
+def _merit_key(bot: Dict[str, Any]) -> Tuple[int, int, float, int]:
+    ev = bot["eval"]
+    return (
+        int(ev.get("recent_6_draws", 0)),
+        int(ev.get("winning_draws", 0)),
+        float(ev["fitness"]) + float(bot.get("live_prestige", 0.0)),
+        int(ev.get("funnel_6_draws", 0)),
+    )
+
+
+def _niche_score(bot: Dict[str, Any], king_m6: Set[int], is_king: bool = False) -> float:
+    novel = 0 if is_king else len(_bot_m6_set(bot) - king_m6)
+    return float(bot["eval"]["fitness"]) + float(bot.get("live_prestige", 0.0)) + (novel * 2_500_000.0)
 
 
 def _is_divergent_enough(cand_g: Dict[str, Any], chosen: List[Dict[str, Any]], max_shared_heads: int = 0) -> bool:
@@ -82,9 +92,10 @@ def select_diverse_dynasties(
         else:
             outsiders.append({**b, "live_prestige": 0.0})
 
+    king_sig = genome_signature(ranked[0]["genome"]) if ranked else ()
     dynasties = list(chosen_by_tribe.values())
-    dynasties.sort(key=lambda x: (_niche_score(x, set() if x is ranked[0] else king_m6), x["eval"]["match_5"]), reverse=True)
-    outsiders.sort(key=lambda x: _niche_score(x, king_m6), reverse=True)
+    dynasties.sort(key=lambda x: (_niche_score(x, king_m6, is_king=(genome_signature(x["genome"]) == king_sig)), _merit_key(x)), reverse=True)
+    outsiders.sort(key=lambda x: (_niche_score(x, king_m6), _merit_key(x)), reverse=True)
 
     for cand_out in list(outsiders):
         if len(dynasties) < survivor_cap:
@@ -94,7 +105,7 @@ def select_diverse_dynasties(
             tid = weakest["tribe_id"]
             t_idx = int(tid.split("-")[1]) if tid.split("-")[1].isdigit() else 0
             dynasties[-1] = {**cand_out, "bot_id": tid, "tribe_id": tid, "bot_name": tribe_label(t_idx), "age": 1, "live_prestige": float(pmap.get(tid, 0.0))}
-            dynasties.sort(key=lambda x: (_niche_score(x, set() if x["tribe_id"] == "tribe-0" else king_m6), x["eval"]["match_5"]), reverse=True)
+            dynasties.sort(key=lambda x: (_niche_score(x, king_m6, is_king=(genome_signature(x["genome"]) == king_sig)), _merit_key(x)), reverse=True)
             outsiders.remove(cand_out)
 
     for cap_shared in (0, 1, 2):
@@ -109,5 +120,5 @@ def select_diverse_dynasties(
             tid = f"tribe-{t_idx}"
             dynasties.append({**nb, "bot_id": tid, "tribe_id": tid, "bot_name": tribe_label(t_idx), "age": 1, "live_prestige": float(pmap.get(tid, 0.0))})
 
-    survivors = dynasties[:survivor_cap]
+    survivors = sorted(dynasties[:survivor_cap], key=_merit_key, reverse=True)
     return survivors, max(0, len(ranked) - len(survivors))

@@ -50,7 +50,7 @@ export const TournamentArenaBoard: React.FC<{
               ? "⏸️ Tạm Nghỉ Chờ Xổ (0% CPU)"
               : evo.mode === "night_boost" || evo.mode === "night_cooldown"
                 ? "🌙 36 Quân Đêm (00:30–07:00)"
-                : "🍃 12 Quân Chạy Liên Tục (<1.5% CPU)"}
+                : "🍃 12 Quân Tiết Kiệm Ngày (Nhịp 4.2s)"}
           </b>{" "}
           • Vua: <b className="text-amber-800">v{evo.champion_version || 1}</b>
         </div>
@@ -114,7 +114,7 @@ export const TournamentArenaBoard: React.FC<{
                 <th className="py-2.5 px-3">Tuổi Gia Tộc</th>
                 <th className="py-2.5 px-3">Nổ Kỳ Gần Nhất</th>
                 <th className="py-2.5 px-3">Tổng {monthsLabel}</th>
-                <th className="py-2.5 px-3">Tiệm Cận 5/6</th>
+                <th className="py-2.5 px-3">Phễu 6/6 • 5/6</th>
                 <th className="py-2.5 px-3">Thực Chiến 18:35</th>
               </tr>
             </thead>
@@ -135,7 +135,9 @@ export const TournamentArenaBoard: React.FC<{
                     {b.recent_6_draws ?? 0} / {b.recent_total ?? 15} kỳ
                   </td>
                   <td className="py-2.5 px-3 text-emerald-800 font-semibold">{b.winning_draws}/{b.draws_total} kỳ 6/6</td>
-                  <td className="py-2.5 px-3 text-slate-700">{b.match_5 ?? 0} dãy 5/6</td>
+                  <td className="py-2.5 px-3 text-slate-700">
+                    <b className="text-amber-800">{b.funnel_6_draws ?? 0}</b> phễu 6 • {b.match_5 ?? 0} (5/6)
+                  </td>
                   <td className="py-2.5 px-3 text-blue-800 font-semibold">+{Number(b.live_prestige || 0).toLocaleString()}</td>
                 </tr>
               ))}

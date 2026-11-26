@@ -64,6 +64,8 @@ def build_algorithms_performance(tickets: List[SavedTicket]) -> List[Dict[str, A
         for code, meta in STRATEGY_METRICS.items()
     }
     for t in tickets:
+        if t.status == "evaluated" and (t.predicted_analysis or {}).get("ticket_origin") == "simulated_backtest":
+            continue
         p = perf_map[t.strategy if t.strategy in perf_map else "balanced"]
         p["total_tickets_saved"] += 1
         if t.status == "evaluated" and t.matched_results:
@@ -78,19 +80,16 @@ def build_algorithms_performance(tickets: List[SavedTicket]) -> List[Dict[str, A
 
 
 def build_winning_history(evaluated_tickets: List[SavedTicket], prize_tier: Optional[str]) -> Dict[str, Any]:
-    row_cost = 10_000
-    only_6 = prize_tier == "jackpot_6"
-    only_live = prize_tier == "live_real_time"
-    tot_eval, tot_rows, tot_spent, tot_win, tot_prize = 0, 0, 0, 0, 0
-    hi_amt, hi_name = 0, "Chưa có"
+    row_cost, only_6, only_live = 10_000, prize_tier == "jackpot_6", prize_tier == "live_real_time"
+    tot_eval = tot_rows = tot_spent = tot_win = tot_prize = hi_amt = 0
+    hi_name = "Chưa có"
     tiers = {"jackpot_1": 0, "jackpot_2": 0, "first": 0, "second": 0, "third": 0}
-    eval_periods, win_periods = set(), set()
-    win_data: List[Dict[str, Any]] = []
+    eval_periods, win_periods, win_data = set(), set(), []
 
     for t in evaluated_tickets:
         pa = t.predicted_analysis or {}
         origin = pa.get("ticket_origin", "simulated_backtest")
-        if only_live and origin != "live_real_time":
+        if (only_live and origin != "live_real_time") or (not only_live and origin == "live_real_time"):
             continue
         tot_eval += 1
         eval_periods.add(t.target_draw_period)

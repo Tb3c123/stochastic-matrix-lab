@@ -111,10 +111,19 @@ async def evaluate_pending_tickets_core(db: AsyncSession, game_code: Optional[st
     if evaluated_count > 0:
         from app.analytics.hybrid_learning import recalibrate_hybrid_learning
         try:
-            if pending_tickets:
-                last_draw = (await db.execute(select(DrawResult).order_by(DrawResult.draw_period.desc()).limit(1))).scalar_one_or_none()
+            eval_by_game: Dict[str, List[SavedTicket]] = {}
+            for t in pending_tickets:
+                if t.status == "evaluated":
+                    eval_by_game.setdefault(t.game_code, []).append(t)
+            for g_code_k, g_tickets in eval_by_game.items():
+                g_obj = (await db.execute(select(LotteryGame).where(LotteryGame.code == g_code_k))).scalar_one_or_none()
+                if not g_obj:
+                    continue
+                last_draw = (await db.execute(
+                    select(DrawResult).where(DrawResult.game_id == g_obj.id).order_by(DrawResult.draw_period.desc()).limit(1)
+                )).scalar_one_or_none()
                 if last_draw:
-                    await recalibrate_hybrid_learning(db, pending_tickets[0].game_code, last_draw, pending_tickets)
+                    await recalibrate_hybrid_learning(db, g_code_k, last_draw, g_tickets)
         except Exception:
             logger.exception("Failed to trigger recalibrate_hybrid_learning")
         await db.commit()

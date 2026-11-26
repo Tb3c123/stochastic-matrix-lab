@@ -49,4 +49,4 @@ def compute_thermal_pacing(
         return ("night_cooldown", 3.2) if stagnation >= 4000 else ("night_boost", 0.26)
     if (recent_6_draws == 0 or total_6_draws < min_gate) and elapsed_sec < 180.0:
         return "warmup", 0.06
-    return "day_eco", 2.5
+    return "day_eco", 4.2

@@ -10,6 +10,7 @@ interface WinningKpiGridProps {
   totalWinningRowsCount: number;
   selectedTierFilter: string;
   onSelectTierFilter: (tier: string) => void;
+  isLiveMode?: boolean;
 }
 
 export const WinningKpiGrid: React.FC<WinningKpiGridProps> = ({
@@ -17,6 +18,7 @@ export const WinningKpiGrid: React.FC<WinningKpiGridProps> = ({
   totalWinningRowsCount,
   selectedTierFilter,
   onSelectTierFilter,
+  isLiveMode = false,
 }) => {
   const winDraws = summary.winning_draws_count ?? 0;
   const evalDraws = summary.evaluated_draws_count ?? 0;
@@ -57,7 +59,9 @@ export const WinningKpiGrid: React.FC<WinningKpiGridProps> = ({
           <div className="mt-2 text-xl md:text-2xl font-extrabold text-amber-900 font-mono truncate">
             {formatVND(summary.total_prize_vnd || 0)}
           </div>
-          <p className="text-[11px] text-slate-600 mt-1">Đối soát từ lịch sử Nhà Vô Địch AI</p>
+          <p className="text-[11px] text-slate-600 mt-1">
+            {isLiveMode ? "Tiền thưởng thật từ vé chốt trước 17:45" : "Mô phỏng hồi tố toán học (không phải tiền thật)"}
+          </p>
         </div>
 
         <div className="bg-slate-50 border border-slate-200 rounded-xl p-4">
@@ -68,15 +72,19 @@ export const WinningKpiGrid: React.FC<WinningKpiGridProps> = ({
           <div className="mt-2 text-sm md:text-base font-bold text-slate-900 truncate" title={summary.highest_prize_name}>
             {summary.highest_prize_name || "Chưa có"}
           </div>
-          <p className="text-[11px] text-slate-600 mt-1">Tự nâng cấp khi có cá thể mới vượt mặt</p>
+          <p className="text-[11px] text-slate-600 mt-1">
+            {isLiveMode ? "Cập nhật tự động sau 18:35 mỗi kỳ quay" : "Tự nâng cấp khi có cá thể mới vượt mặt"}
+          </p>
         </div>
       </div>
 
-      <WinningTierPills
-        tierCounts={summary.tier_counts}
-        selectedTierFilter={selectedTierFilter}
-        onSelectTierFilter={onSelectTierFilter}
-      />
+      {!isLiveMode && (
+        <WinningTierPills
+          tierCounts={summary.tier_counts}
+          selectedTierFilter={selectedTierFilter}
+          onSelectTierFilter={onSelectTierFilter}
+        />
+      )}
     </div>
   );
 };

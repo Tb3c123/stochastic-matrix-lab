@@ -60,10 +60,13 @@ def crossover_gladiators(
     sigma = 0.06 if stagnation_gens < 10 else 0.11
 
     chosen_heads: List[Dict[str, Any]] = []
+    has_funnel_6 = int((pa.get("eval") or {}).get("funnel_6_draws", 0)) > 0 or int((pa.get("eval") or {}).get("match_5", 0)) > 0
     for slot in range(4):
         ha = heads_a[slot % len(heads_a)]
         hb = heads_b[slot % len(heads_b)]
-        if slot < 2 or r.random() < 0.5:
+        if slot == 3 and has_funnel_6 and r.random() < 0.45:
+            chosen_heads.append(mutate_head(ha, max_num=max_num, sigma=sigma, rng=r, sniper_only=True))
+        elif slot < 2 or r.random() < 0.5:
             chosen_heads.append(_blend_and_mutate_head(ha, hb, max_num, sigma, r))
         else:
             chosen_heads.append(mutate_head(ha, max_num=max_num, sigma=sigma, rng=r))
@@ -84,13 +87,23 @@ def run_tournament_generation(
         if bot.get("eval") is None:
             bot["eval"] = evaluate_genome_fast(bot["genome"], tensors, max_num=max_num, is_power=is_power)
 
-    ranked = sorted(population, key=lambda b: (b["eval"]["fitness"] + float((prestige_map or {}).get(str(b.get("tribe_id") or ""), b.get("live_prestige", 0.0))), b["eval"]["winning_draws"], b["eval"]["match_5"]), reverse=True)
+    ranked = sorted(
+        population,
+        key=lambda b: (
+            int(b["eval"]["recent_6_draws"]),
+            int(b["eval"]["winning_draws"]),
+            float(b["eval"]["fitness"]) + float((prestige_map or {}).get(str(b.get("tribe_id") or ""), b.get("live_prestige", 0.0))),
+            int(b["eval"].get("funnel_6_draws", 0)),
+        ),
+        reverse=True,
+    )
     elites, culled_count = select_diverse_dynasties(ranked, next_size, r, prestige_map=prestige_map)
     leaderboard = [
         {
             "rank": r_idx + 1, "bot_id": b["bot_id"], "bot_name": b["bot_name"], "age": b["age"],
             "live_prestige": round(float(b.get("live_prestige", 0.0))),
             **{k: b["eval"][k] for k in ("fitness", "recent_6_draws", "recent_total", "latest_6_date", "latest_6_period", "hit_frequency_pct", "holdout_frequency_pct", "winning_draws", "draws_total", "match_6", "match_5", "match_4")},
+            "funnel_6_draws": int(b["eval"].get("funnel_6_draws", 0)),
         }
         for r_idx, b in enumerate(elites[:6])
     ]

@@ -77,8 +77,26 @@ export function useUnifiedTickets(
     () => allTickets.filter((t) => t.status === "pending"),
     [allTickets]
   );
+  const liveEvaluatedGroups = useMemo(
+    () =>
+      groupTicketsByDate(
+        allTickets.filter(
+          (t) =>
+            t.status === "evaluated" &&
+            t.predicted_analysis?.ticket_origin === "live_real_time"
+        )
+      ),
+    [allTickets]
+  );
   const evaluatedGroups = useMemo(
-    () => groupTicketsByDate(allTickets.filter((t) => t.status === "evaluated")),
+    () =>
+      groupTicketsByDate(
+        allTickets.filter(
+          (t) =>
+            t.status === "evaluated" &&
+            t.predicted_analysis?.ticket_origin !== "live_real_time"
+        )
+      ),
     [allTickets]
   );
 
@@ -88,6 +106,7 @@ export function useUnifiedTickets(
     winningTickets,
     totalWinningRowsCount,
     pendingTickets,
+    liveEvaluatedGroups,
     evaluatedGroups,
   };
 }

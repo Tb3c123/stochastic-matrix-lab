@@ -76,8 +76,9 @@ def build_ensemble_ticket_plans(
     ordered = sorted(
         population,
         key=lambda b: (
-            float((b.get("eval") or {}).get("fitness", 0.0)) + float(b.get("live_prestige", 0.0)),
+            int((b.get("eval") or {}).get("recent_6_draws", 0)),
             int((b.get("eval") or {}).get("winning_draws", 0)),
+            float((b.get("eval") or {}).get("fitness", 0.0)) + float(b.get("live_prestige", 0.0)),
         ),
         reverse=True,
     )
@@ -130,7 +131,7 @@ def build_ensemble_ticket_plans(
     mav_cands = [b for b in unique_bots[1:] if b is not runner] or unique_bots[-1:]
     mav_bot = max(
         mav_cands,
-        key=lambda b: ((b.get("eval") or {}).get("match_5", 0) * 12.0) - sum((m & ref_union).bit_count() for m in bot_masks_map.get(unique_bots.index(b), [])[:5]),
+        key=lambda b: (int((b.get("eval") or {}).get("winning_draws", 0)) * 50.0 + int((b.get("eval") or {}).get("funnel_6_draws", 0)) * 6.0) - sum((m & ref_union).bit_count() for m in bot_masks_map.get(unique_bots.index(b), [])[:5]),
     )
     m_pack = _rows_from_bot(game_code, mav_bot, step, max_num, is_power, sp_ranked, global_masks, 4)
 
