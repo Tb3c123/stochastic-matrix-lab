@@ -1,7 +1,7 @@
 import json
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Set
 from app.analytics.evo_wheel import nums_to_mask, build_deterministic_rows
 
 DATA_DIR = Path("/app/data")
@@ -30,47 +30,54 @@ def snapshot_squad_for_upcoming_draw(
     game_code: str, target_period: str, population: List[Dict[str, Any]],
     step: Dict[str, Any], max_num: int, is_power: bool,
 ) -> None:
+    """Snapshot strictly 1 unique entry per official tribe_id (no duplicate children or temporary scouts)."""
     store = _read_store()
     g_entry = store.setdefault(game_code, {"prestige_by_bot": {}, "snapshots": {}, "last_scored_period": ""})
     snaps: List[Dict[str, Any]] = []
-    for bot in population[:36]:
+    seen_tids: Set[str] = set()
+    for bot in population:
+        tid = str(bot.get("tribe_id") or bot.get("bot_id") or "")
+        if not tid.startswith("tribe-") or tid in seen_tids:
+            continue
+        seen_tids.add(tid)
         masks, _ = build_deterministic_rows(bot["genome"], step, max_num, is_power=is_power, rows_per_draw=20)
-        snaps.append({
-            "bot_id": bot.get("tribe_id") or bot["bot_id"],
-            "bot_name": bot["bot_name"],
-            "row_masks": masks,
-        })
-    g_entry["snapshots"][target_period] = {
-        "updated_at": datetime.utcnow().isoformat(),
-        "entries": snaps,
-    }
-    # Keep only last 4 periods in snapshot buffer
+        snaps.append({"bot_id": tid, "bot_name": bot["bot_name"], "row_masks": masks})
+        if len(snaps) >= 20:
+            break
+
+    g_entry["snapshots"][target_period] = {"updated_at": datetime.utcnow().isoformat(), "entries": snaps}
     if len(g_entry["snapshots"]) > 4:
-        oldest = sorted(g_entry["snapshots"].keys())[:-4]
-        for k in oldest:
+        for k in sorted(g_entry["snapshots"].keys())[:-4]:
             g_entry["snapshots"].pop(k, None)
     _write_store(store)
 
 
-def score_squad_on_official_draw(game_code: str, official_period: str, winning_numbers: List[int]) -> Dict[str, Any]:
-    """Evaluate locked pre-draw squad predictions against real-time official Vietlott numbers (with x0.85 decay)."""
+def score_squad_on_official_draw(
+    game_code: str, official_period: str, winning_numbers: List[int], force_recompute: bool = False,
+) -> Dict[str, Any]:
+    """Evaluate unique tribe predictions against official Vietlott numbers (x0.85 decay, zero double-counting)."""
     store = _read_store()
     g_entry = store.setdefault(game_code, {"prestige_by_bot": {}, "snapshots": {}, "last_scored_period": ""})
-    if g_entry.get("last_scored_period") == official_period:
-        return {"already_scored": True, "winners": 0}
+    if not force_recompute and g_entry.get("last_scored_period") == official_period:
+        return {"already_scored": True, "winners": 0, "prestige_by_bot": g_entry.get("prestige_by_bot", {})}
 
+    base_map = {} if force_recompute else (g_entry.get("prestige_by_bot") or {})
     prestige: Dict[str, float] = {
         k: round(float(v) * 0.85, 1)
-        for k, v in (g_entry.get("prestige_by_bot") or {}).items()
-        if float(v) * 0.85 >= 1000.0
+        for k, v in base_map.items()
+        if str(k).startswith("tribe-") and float(v) * 0.85 >= 1000.0
     }
     snap = (g_entry.get("snapshots") or {}).get(official_period)
     win_mask = nums_to_mask(winning_numbers)
     winners = 0
+    seen_bids: Set[str] = set()
 
     if snap:
         for item in snap.get("entries", []):
-            bid = item["bot_id"]
+            bid = str(item.get("bot_id") or "")
+            if not bid.startswith("tribe-") or bid in seen_bids:
+                continue
+            seen_bids.add(bid)
             bonus = 0.0
             for m in item.get("row_masks", []):
                 mc = (int(m) & win_mask).bit_count()

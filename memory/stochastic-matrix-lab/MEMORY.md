@@ -1,3 +1,4 @@
 - [2026-11-24] 2+2 Specialist Heads must lock gain>0 heads intact during crossover/mutate_genome so Mega (270d/117d) & Power (365d/156d) stack >=4 distinct 6/6 draws including Nov 2026.
 - [2026-11-25] 4-Source Ensemble Council (king, runner_up, consensus, maverick) + 8 Anti-Clone Dynasties + Row-Level 6/6 Locking prevents clone monoculture and ensures multi-generation dynasty ages.
 - [2026-11-25] Draw-day 4-phase lifecycle: 16:30 seals Final Ensemble Council tickets & pauses Arena (0% CPU draw_standby) through 17:45 cutoff until official result lands in DB (~18:35), then auto-scores & resumes.
+- [2026-11-26] Hybrid 2 Raw Genome + 3 Golden 8/8 DNA rows prevents filtering out off-Gauss real draws; live_prestige reads strictly from deduplicated tribe_id ledger; Arena runs continuously in day_eco/night_boost with RAM /arena-logs.

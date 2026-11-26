@@ -65,11 +65,15 @@ async def upsert_alpha_upcoming_tickets(
     for v_idx, plan in enumerate(plans):
         rows = plan["rows"]
         chunk_sp = plan["specials"]
+        origins = plan.get("origins") or ["dna_golden"] * len(rows)
         row_fcs = []
         for i, r in enumerate(rows):
             fc = compute_single_row_jackpot_forecast(game_code, r, special_number=chunk_sp[i])
+            orig = origins[i] if i < len(origins) else "dna_golden"
             fc["council_source"] = plan["council_source"]
             fc["council_badge"] = plan["council_badge"]
+            fc["row_origin"] = orig
+            fc["origin_badge"] = "🧬 Nguyên Bản Gia Tộc" if orig == "raw_genome" else "✨ Chuẩn Vàng 8/8 DNA"
             row_fcs.append(fc)
 
         compute_ticket_beauty_evaluation(game_code, rows, row_fcs, "hybrid_ai_learned")

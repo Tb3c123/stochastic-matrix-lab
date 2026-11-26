@@ -50,30 +50,32 @@ def _rows_from_bot(
 ) -> Dict[str, Any]:
     raw_masks, _ = build_deterministic_rows(bot["genome"], step, max_num, is_power=is_power, rows_per_draw=20)
     heads = bot["genome"].get("heads") or [bot["genome"]] * 4
-    rows, sps, local_masks = [], [], []
+    rows, sps, origins, local_masks = [], [], [], []
     for r_j in range(5):
-        h = heads[r_j % len(heads)]
-        ranked = rank_balls_for_head(h, step, max_num)
-        base_nums = mask_to_nums(raw_masks[(r_j * 4) % len(raw_masks)], max_num)
-        anchors = local_masks + global_masks[:2]
-        r_nums = polish_row_dna(game_code, base_nums, ranked, anchors, seed_base * 13 + r_j, max_ov=2)
+        if r_j < 2:
+            chosen_m = next((cm for cm in raw_masks[(r_j * 5):] + raw_masks if cm.bit_count() == 6 and all((cm & pm).bit_count() <= 3 for pm in local_masks + global_masks[:2])), raw_masks[r_j * 5])
+            r_nums = mask_to_nums(chosen_m, max_num)
+            origins.append("raw_genome")
+        else:
+            ranked = rank_balls_for_head(heads[r_j % len(heads)], step, max_num)
+            base_nums = mask_to_nums(raw_masks[(r_j * 4) % len(raw_masks)], max_num)
+            r_nums = polish_row_dna(game_code, base_nums, ranked, local_masks + global_masks[:2], seed_base * 13 + r_j, max_ov=2)
+            origins.append("dna_golden")
         m = nums_to_mask(r_nums)
         local_masks.append(m)
         global_masks.append(m)
         rows.append(r_nums)
         sps.append(_pick_sp(sp_ranked, r_nums, seed_base + r_j, is_power))
-    return {"rows": rows, "specials": sps}
+    return {"rows": rows, "specials": sps, "origins": origins}
 
 
 def build_ensemble_ticket_plans(
     game_code: str, population: List[Dict[str, Any]], step: Dict[str, Any], max_num: int, is_power: bool,
 ) -> List[Dict[str, Any]]:
-    """Synthesize 4 independent upcoming tickets: King #1 + Live/Runner-Up + Squad Consensus + Maverick Hedge."""
     seen, unique_bots = set(), []
     ordered = sorted(
         population,
         key=lambda b: (
-            1 if (b.get("eval") or {}).get("recent_6_draws", 0) >= 1 else 0,
             float((b.get("eval") or {}).get("fitness", 0.0)) + float(b.get("live_prestige", 0.0)),
             int((b.get("eval") or {}).get("winning_draws", 0)),
         ),
@@ -94,7 +96,7 @@ def build_ensemble_ticket_plans(
 
     live_leaders = sorted([b for b in unique_bots[1:] if float(b.get("live_prestige", 0.0)) > 0], key=lambda x: float(x.get("live_prestige", 0.0)), reverse=True)
     runner = live_leaders[0] if live_leaders else (unique_bots[1] if len(unique_bots) > 1 else king)
-    r_badge = "⚡ Vua Thực Chiến 18:35" if live_leaders else f"⚡ Á Quân • {runner['bot_name']}"
+    r_badge = f"⚡ Thực Chiến • {runner['bot_name']}" if live_leaders else f"⚡ Á Quân • {runner['bot_name']}"
     r_pack = _rows_from_bot(game_code, runner, step, max_num, is_power, sp_ranked, global_masks, 2)
 
     votes = {n: 0.0 for n in range(1, max_num + 1)}
@@ -111,10 +113,11 @@ def build_ensemble_ticket_plans(
                     votes[n] += wt * mult
 
     cons_ranked = sorted(range(1, max_num + 1), key=lambda n: (votes[n], -n), reverse=True)
-    c_rows, c_sps, c_local = [], [], []
+    c_rows, c_sps, c_origins, c_local = [], [], [], []
     for r_j in range(5):
         base_c = sorted(cons_ranked[(r_j * 2):(r_j * 2 + 6)])
-        r_nums = polish_row_dna(game_code, base_c, cons_ranked, c_local + global_masks[:2], 39 + r_j, max_ov=2)
+        r_nums = base_c if (r_j == 0 and len(base_c) == 6) else polish_row_dna(game_code, base_c, cons_ranked, c_local + global_masks[:2], 39 + r_j, max_ov=2)
+        c_origins.append("raw_genome" if r_j == 0 else "dna_golden")
         cm = nums_to_mask(r_nums)
         c_local.append(cm)
         global_masks.append(cm)
@@ -134,6 +137,6 @@ def build_ensemble_ticket_plans(
     return [
         {"council_source": "king", "council_badge": "👑 Tinh Hoa Vua #1", "title": f"👑 Vé #1 • Tinh Hoa Vua ({king['bot_name']})", **k_pack},
         {"council_source": "runner_up", "council_badge": r_badge, "title": f"⚡ Vé #2 • {r_badge}", **r_pack},
-        {"council_source": "consensus", "council_badge": f"🗳️ Đồng Thuận {len(unique_bots)} Gia Tộc", "title": f"🗳️ Vé #3 • Đồng Thuận Bỏ Phiếu ({len(unique_bots)} Đấu Sĩ)", "rows": c_rows, "specials": c_sps},
+        {"council_source": "consensus", "council_badge": f"🗳️ Đồng Thuận {len(unique_bots)} Gia Tộc", "title": f"🗳️ Vé #3 • Đồng Thuận Bỏ Phiếu ({len(unique_bots)} Gia Tộc)", "rows": c_rows, "specials": c_sps, "origins": c_origins},
         {"council_source": "maverick", "council_badge": "🌪️ Ngược Dòng Đảo Cầu", "title": f"🌪️ Vé #4 • Ngược Dòng Đảo Cầu ({mav_bot['bot_name']})", **m_pack},
     ]

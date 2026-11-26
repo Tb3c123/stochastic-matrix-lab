@@ -8,6 +8,7 @@ from app.models.ticket import SavedTicket
 from app.schemas.common import ResponseEnvelope, ErrorDetail
 from app.analytics.bandit import compute_ucb1_arm_scores
 from app.services.hunt_jackpot_champion import read_hunter_status
+from app.services.arena_log_store import get_arena_logs
 from app.services.thermal_pacing import get_draw_standby_info
 from app.services.api_cache import get_cached, set_cached, invalidate_game_cache
 from app.analytics.hybrid_learning import (
@@ -16,6 +17,11 @@ from app.analytics.hybrid_learning import (
 )
 
 router = APIRouter(prefix="/auto-cycle", tags=["AI Hybrid Auto Cycle"])
+_BEAUTY_KEYS = (
+    "ticket_beauty_score", "beauty_grade", "beauty_verdict", "has_golden_signal",
+    "is_golden_ticket", "golden_rows_count", "golden_rows", "max_gates_passed",
+    "total_jackpot_gates", "best_row_index", "best_row_label", "best_row_score", "beauty_highlights",
+)
 
 
 def _build_latest_tickets_batch(
@@ -33,9 +39,7 @@ def _build_latest_tickets_batch(
         pa = dict(t.predicted_analysis or {})
         variant = pa.get("ticket_variant", {})
         row_fcs = [dict(fc) for fc in pa.get("row_forecasts", [])]
-        beauty = compute_ticket_beauty_evaluation(
-            game_code=game_code, rows=t.rows_data, row_forecasts=row_fcs, strategy="hybrid_ai_learned"
-        )
+        beauty = compute_ticket_beauty_evaluation(game_code=game_code, rows=t.rows_data, row_forecasts=row_fcs, strategy="hybrid_ai_learned")
         scored_items.append({
             "id": t.id, "batch_index": pa.get("batch_ticket_index", idx + 1),
             "batch_total": pa.get("batch_ticket_total", min(4, len(same_period))),
@@ -45,21 +49,11 @@ def _build_latest_tickets_batch(
             "council_source": pa.get("council_source", ""), "council_badge": pa.get("council_badge", ""),
             "target_draw_period": t.target_draw_period, "target_draw_date": t.target_draw_date,
             "rows": t.rows_data, "status": t.status, "row_forecasts": row_fcs,
-            **{k: beauty[k] for k in (
-                "ticket_beauty_score", "beauty_grade", "beauty_verdict", "has_golden_signal",
-                "is_golden_ticket", "golden_rows_count", "golden_rows", "max_gates_passed",
-                "total_jackpot_gates", "best_row_index", "best_row_label", "best_row_score", "beauty_highlights",
-            )},
-            "beauty_evaluation": beauty, "created_at": t.created_at.isoformat(),
+            **{k: beauty[k] for k in _BEAUTY_KEYS}, "beauty_evaluation": beauty, "created_at": t.created_at.isoformat(),
         })
 
-    ranked = sorted(
-        scored_items,
-        key=lambda x: (1 if x["has_golden_signal"] else 0, x["golden_rows_count"], x["ticket_beauty_score"], x["id"]),
-        reverse=True,
-    )
-    selected: List[Dict[str, Any]] = []
-    seen_variants = set()
+    ranked = sorted(scored_items, key=lambda x: (1 if x["has_golden_signal"] else 0, x["golden_rows_count"], x["ticket_beauty_score"], x["id"]), reverse=True)
+    selected, seen_variants = [], set()
     for item in ranked:
         if len(selected) < 4 and (item["variant_code"] not in seen_variants or item["has_golden_signal"]):
             selected.append(item)
@@ -68,13 +62,9 @@ def _build_latest_tickets_batch(
         if len(selected) < min(4, len(ranked)) and item not in selected:
             selected.append(item)
 
-    playable_golden: List[Dict[str, Any]] = []
-    seen_rows = set()
+    playable_golden, seen_rows = [], set()
     for r_idx, r_item in enumerate(selected):
-        r_item.update({
-            "beauty_rank": r_idx + 1, "batch_index": r_idx + 1, "batch_total": len(selected),
-            "is_best_ai_ticket": bool(r_item["has_golden_signal"]) and (r_idx == 0),
-        })
+        r_item.update({"beauty_rank": r_idx + 1, "batch_index": r_idx + 1, "batch_total": len(selected), "is_best_ai_ticket": bool(r_item["has_golden_signal"]) and (r_idx == 0)})
         for gr in r_item.get("golden_rows", []):
             sig = tuple(gr.get("numbers", []))
             if sig not in seen_rows:
@@ -82,8 +72,7 @@ def _build_latest_tickets_batch(
                 playable_golden.append({
                     **gr, "ticket_id": r_item["id"], "ticket_batch_index": r_idx + 1,
                     "council_source": r_item.get("council_source", ""), "council_badge": r_item.get("council_badge", ""),
-                    "variant_name": r_item["variant_name"], "target_draw_period": r_item["target_draw_period"],
-                    "target_draw_date": r_item["target_draw_date"],
+                    "variant_name": r_item["variant_name"], "target_draw_period": r_item["target_draw_period"], "target_draw_date": r_item["target_draw_date"],
                 })
 
     has_signal = len(playable_golden) > 0
@@ -102,32 +91,23 @@ async def get_auto_cycle_status(game_code: str = Query("mega_6_45"), db: AsyncSe
     if base_payload is None:
         state = await get_or_create_learning_state(db, game_code)
         current_level = get_current_escalation_level(state)
-        escalation_info = ESCALATION_LADDER.get(current_level, ESCALATION_LADDER[0])
         res = await db.execute(
-            select(SavedTicket)
-            .where(SavedTicket.game_code == game_code, SavedTicket.strategy == "hybrid_ai_learned")
-            .order_by(
-                case((SavedTicket.status == "pending", 0), else_=1).asc(),
-                SavedTicket.target_draw_period.desc(),
-                SavedTicket.id.desc(),
-            )
+            select(SavedTicket).where(SavedTicket.game_code == game_code, SavedTicket.strategy == "hybrid_ai_learned")
+            .order_by(case((SavedTicket.status == "pending", 0), else_=1).asc(), SavedTicket.target_draw_period.desc(), SavedTicket.id.desc())
             .limit(16)
         )
         batch, golden_rows, best_ai, latest_ticket, has_signal = _build_latest_tickets_batch(game_code, list(res.scalars().all()))
         base_payload = set_cached("auto_cycle_db", cache_key, {
             "game_code": game_code, "is_auto_enabled": state.is_auto_enabled,
-            "scheduled_time": "10:00 AM • Chốt số cuối 16:30 • Đóng vé 17:45",
+            "scheduled_time": "Chạy liên tục 24/7 • Chốt số cuối 16:30 • Đóng vé 17:45",
             "total_cycles_learned": state.total_cycles_learned, "recent_accuracy_rate": state.recent_accuracy_rate,
-            "bandit_cumulative_reward": state.bandit_cumulative_reward,
-            "ucb1_arm_scores": compute_ucb1_arm_scores(state.learning_logs),
-            "escalation_level": current_level, "escalation_info": escalation_info,
+            "bandit_cumulative_reward": state.bandit_cumulative_reward, "ucb1_arm_scores": compute_ucb1_arm_scores(state.learning_logs),
+            "escalation_level": current_level, "escalation_info": ESCALATION_LADDER.get(current_level, ESCALATION_LADDER[0]),
             "escalation_ladder": list(ESCALATION_LADDER.values()),
             "weights": {"w_lateness": state.w_lateness, "w_gauss_sum": state.w_gauss_sum, "w_hot": state.w_hot, "w_parity": state.w_parity},
-            "last_learned_draw_period": state.last_learned_draw_period,
-            "last_run_at": state.last_run_at.isoformat() if state.last_run_at else None,
+            "last_learned_draw_period": state.last_learned_draw_period, "last_run_at": state.last_run_at.isoformat() if state.last_run_at else None,
             "learning_logs": state.learning_logs or [], "has_playable_signal": has_signal,
-            "playable_golden_rows": golden_rows, "latest_ai_ticket": latest_ticket,
-            "best_ai_ticket": best_ai, "latest_ai_tickets": batch,
+            "playable_golden_rows": golden_rows, "latest_ai_ticket": latest_ticket, "best_ai_ticket": best_ai, "latest_ai_tickets": batch,
         })
 
     return ResponseEnvelope(success=True, data={
@@ -146,3 +126,10 @@ async def run_auto_cycle_now(game_code: str = Query("mega_6_45"), db: AsyncSessi
     if not result.get("success"):
         return ResponseEnvelope(success=False, error=ErrorDetail(code="AUTO_CYCLE_FAILED", message=result.get("error", "Vòng lặp tự động thất bại")))
     return ResponseEnvelope(success=True, data=result)
+
+
+@router.get("/arena-logs", response_model=ResponseEnvelope)
+async def list_arena_logs(
+    game_code: str = Query("mega_6_45"), limit: int = Query(150), event_type: str = Query("all"),
+):
+    return ResponseEnvelope(success=True, data={"items": get_arena_logs(game_code, limit=limit, event_type=event_type)})

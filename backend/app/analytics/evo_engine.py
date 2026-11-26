@@ -1,3 +1,4 @@
+import math
 import random
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional
@@ -7,31 +8,23 @@ from app.analytics.evo_wheel import (
 )
 
 
-def precompute_window_tensors(
-    all_draws: List[Any], max_num: int, days_back: int = 270, is_power: bool = False,
-) -> List[Dict[str, Any]]:
+def precompute_window_tensors(all_draws: List[Any], max_num: int, days_back: int = 270, is_power: bool = False) -> List[Dict[str, Any]]:
     ordered = sorted(all_draws, key=lambda d: (d.draw_date, d.draw_period))
     if len(ordered) < 12:
         return []
     approx = max(10, round(days_back * 3 / 7))
     try:
-        latest_dt = datetime.strptime(ordered[-1].draw_date, "%Y-%m-%d")
-        cutoff = (latest_dt - timedelta(days=days_back)).strftime("%Y-%m-%d")
+        cutoff = (datetime.strptime(ordered[-1].draw_date, "%Y-%m-%d") - timedelta(days=days_back)).strftime("%Y-%m-%d")
         recent = [d for d in ordered if d.draw_date >= cutoff]
         targets = recent if len(recent) >= 8 else ordered[-approx:]
     except Exception:
         targets = ordered[-approx:]
-
     tensors: List[Dict[str, Any]] = []
     for idx, td in enumerate(ordered):
         if td not in targets or idx < 8:
             continue
         hist = [{"winning_numbers": d.winning_numbers, "special_number": d.special_number} for d in ordered[max(0, idx - 50):idx]]
-        tensors.append({
-            "draw_period": td.draw_period, "draw_date": td.draw_date,
-            "win_mask": nums_to_mask(td.winning_numbers), "win_nums": list(td.winning_numbers),
-            "special_num": td.special_number if is_power else None, **build_feature_step(hist, max_num, is_power),
-        })
+        tensors.append({"draw_period": td.draw_period, "draw_date": td.draw_date, "win_mask": nums_to_mask(td.winning_numbers), "win_nums": list(td.winning_numbers), "special_num": td.special_number if is_power else None, **build_feature_step(hist, max_num, is_power)})
     return tensors
 
 
@@ -50,6 +43,13 @@ def mutate_head(head: Dict[str, Any], max_num: int, sigma: float = 0.05, rng: Op
             if cand not in nh["pats"][ri]:
                 nh["pats"][ri][pi] = cand
                 nh["pats"][ri].sort()
+    elif nh["pats"]:
+        # All 5 rows locked on parent -> on child copy, unlock 1 row to hunt multi-draw >20 6/6 hits!
+        ri, pi, cand = r.randrange(len(nh["pats"])), r.randrange(6), r.randrange(max_num)
+        nh["locked_pats"] = [x for x in nh["locked_pats"] if x != ri]
+        if cand not in nh["pats"][ri]:
+            nh["pats"][ri][pi] = cand
+            nh["pats"][ri].sort()
     return nh
 
 
@@ -69,9 +69,8 @@ def mutate_genome(
     if old_heads:
         new_heads = [dict(h, pats=[list(p) for p in h["pats"]]) for h in old_heads]
         free_idx = [i for i, h in enumerate(new_heads) if len(h.get("locked_pats") or []) < len(h.get("pats", []))]
-        if free_idx:
-            hi = r.choice(free_idx)
-            new_heads[hi] = mutate_head(new_heads[hi], max_num=max_num, sigma=sigma, rng=r)
+        hi = r.choice(free_idx) if free_idx else r.randrange(len(new_heads))
+        new_heads[hi] = mutate_head(new_heads[hi], max_num=max_num, sigma=sigma, rng=r)
     else:
         new_heads = [make_specialist_head(parent, max_num=max_num, rng=r) for _ in range(4)]
 
@@ -90,7 +89,7 @@ def evaluate_genome_fast(
     jp2 = m5 = m4 = m3 = 0
     rec_m5 = rec_m4 = long_sq = 0.0
     total_draws = max(1, len(tensors))
-    rec_span = min(total_draws, 18 if is_power else 15)
+    rec_span = min(total_draws, 30)
     z1_start = max(0, total_draws - rec_span)
     recent_total = max(1, total_draws - z1_start)
     m6_draws, recent_m6 = set(), set()
@@ -99,17 +98,16 @@ def evaluate_genome_fast(
     head_stats = [{"recent_m6": set(), "m6_draws": set(), "win_pats": set(), "rec_m5": 0, "rec_sq": 0, "long_m5": 0, "long_sq": 0} for _ in range(max(4, len(heads)))]
     best_hit: Dict[str, Any] = {"match_count": 0, "matched_special": False, "draw_period": "", "row": []}
     traces: List[Dict[str, Any]] = []
+
     for idx, step in enumerate(tensors):
         row_masks, sp_picks = build_deterministic_rows(genome, step, max_num, is_power, rows_per_draw)
-        win_mask, sp_target = step["win_mask"], step["special_num"]
-        in_rec = idx >= z1_start
+        win_mask, sp_target, in_rec = step["win_mask"], step["special_num"], idx >= z1_start
         for r_i, (cm, cand_sp) in enumerate(zip(row_masks, sp_picks)):
             mc = (cm & win_mask).bit_count()
             m_sp = bool(is_power and sp_target and cand_sp == sp_target)
             hs = head_stats[min(r_i // 5, len(head_stats) - 1)]
             sq = mc * mc
-            long_sq += sq
-            hs["long_sq"] += sq
+            long_sq, hs["long_sq"] = long_sq + sq, hs["long_sq"] + sq
             if in_rec:
                 hs["rec_sq"] += sq * (idx - z1_start + 2)
             if mc == 6:
@@ -131,12 +129,14 @@ def evaluate_genome_fast(
             if mc >= best_hit["match_count"]:
                 best_hit = {"match_count": mc, "matched_special": m_sp, "draw_period": step["draw_period"], "draw_date": step["draw_date"], "row": mask_to_nums(cm, max_num), "winning_numbers": step["win_nums"]}
         traces.append({"draw_period": step["draw_period"], "row_masks": row_masks, "sp_picks": sp_picks})
+
     win_6_cnt, rec_6_cnt = len(m6_draws), len(recent_m6)
     for h_i, h in enumerate(heads):
         wp = sorted(head_stats[h_i]["win_pats"])
         h["locked_pats"], h["locked"] = wp, len(wp) >= len(h.get("pats", []))
-    older_6_cnt = win_6_cnt - rec_6_cnt
-    fitness = round((rec_6_cnt * 3_500_000.0) + (older_6_cnt * 1_000_000.0) + (rec_m5 * 3_200.0) + (m5 * 700.0) + (rec_m4 * 60.0) + (m4 * 15.0) + (long_sq * 0.04), 2)
+    # Smooth exponential recency reward across ALL draws (no hard 15-draw wall!)
+    m6_score = sum(1_000_000.0 * (1.0 + 2.8 * math.exp(-0.06 * (total_draws - 1 - d_i))) for d_i in m6_draws)
+    fitness = round(m6_score + (rec_m5 * 2_500.0) + (m5 * 800.0) + (rec_m4 * 45.0) + (m4 * 15.0) + (long_sq * 0.04), 2)
     return {
         "genome": genome, "fitness": fitness, "winning_draws": win_6_cnt, "draws_total": total_draws,
         "recent_6_draws": rec_6_cnt, "recent_total": recent_total, "latest_6_period": latest_6_period, "latest_6_date": latest_6_date,

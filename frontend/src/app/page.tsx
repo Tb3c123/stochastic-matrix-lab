@@ -4,6 +4,7 @@ import React, { useState, useCallback } from "react";
 import { Header } from "@/components/Header";
 import { HybridLearningDashboard } from "@/components/HybridLearningDashboard";
 import { UnifiedTicketsHub } from "@/components/UnifiedTicketsHub";
+import { ArenaLogsPage } from "@/components/ArenaLogsPage";
 import { Disclaimer } from "@/components/Disclaimer";
 import { MobileTabsBar } from "@/components/home/MobileTabsBar";
 import { CompactDrawStatusBar } from "@/components/home/CompactDrawStatusBar";
@@ -43,6 +44,7 @@ export default function HomePage() {
             gameCode={selectedGame}
             refreshTrigger={ticketsRefreshTrigger}
             onChampionUpgraded={triggerTicketsRefresh}
+            onOpenArenaLogs={() => setActiveTab("arena_logs")}
           />
         )}
 
@@ -53,6 +55,8 @@ export default function HomePage() {
             refreshTrigger={ticketsRefreshTrigger}
           />
         )}
+
+        {activeTab === "arena_logs" && <ArenaLogsPage gameCode={selectedGame} />}
 
         {activeTab === "analytics" && (
           <AnalyticsSection

@@ -1,5 +1,5 @@
 import random
-from typing import Any, Dict, List, Set, Tuple
+from typing import Any, Dict, List, Optional, Set, Tuple
 
 TRIBE_TITLES: List[str] = [
     "👑 Gia Tộc Vua 6/6",
@@ -35,21 +35,18 @@ def tribe_label(tribe_idx: int) -> str:
 
 def select_diverse_dynasties(
     ranked: List[Dict[str, Any]], next_size: int, rng: random.Random,
+    prestige_map: Optional[Dict[str, float]] = None,
 ) -> Tuple[List[Dict[str, Any]], int]:
-    """Keep 8 distinct dynasties (day 12) or 20 (night 36) with anti-clone dedup & lineage age continuity."""
+    """Keep distinct dynasties with strict anti-clone dedup and authoritative ledger-only live_prestige."""
     survivor_cap = 8 if next_size <= 16 else min(20, (next_size * 5) // 9)
     survivor_cap = min(survivor_cap, max(4, next_size - 4))
+    pmap = prestige_map if prestige_map is not None else {}
 
-    tribe_stats: Dict[str, Tuple[int, float, str]] = {}
+    tribe_ages: Dict[str, int] = {}
     for b in ranked:
-        tid = b.get("tribe_id") or ""
+        tid = str(b.get("tribe_id") or "")
         if tid.startswith("tribe-"):
-            prev_age, prev_pr, prev_nm = tribe_stats.get(tid, (0, 0.0, b["bot_name"]))
-            tribe_stats[tid] = (
-                max(prev_age, int(b.get("age", 1))),
-                max(prev_pr, float(b.get("live_prestige", 0.0))),
-                prev_nm,
-            )
+            tribe_ages[tid] = max(tribe_ages.get(tid, 0), int(b.get("age", 1)))
 
     seen_sigs: Set[Tuple[Any, ...]] = set()
     chosen_by_tribe: Dict[str, Dict[str, Any]] = {}
@@ -60,41 +57,35 @@ def select_diverse_dynasties(
         if sig in seen_sigs:
             continue
         seen_sigs.add(sig)
-        tid = b.get("tribe_id") or ""
+        tid = str(b.get("tribe_id") or "")
         if tid.startswith("tribe-") and tid not in chosen_by_tribe:
-            old_age, old_pr, _ = tribe_stats.get(tid, (int(b.get("age", 1)), 0.0, b["bot_name"]))
+            old_age = tribe_ages.get(tid, int(b.get("age", 1)))
             t_idx = int(tid.split("-")[1]) if tid.split("-")[1].isdigit() else 0
+            auth_pr = float(pmap.get(tid, b.get("live_prestige", 0.0) if prestige_map is None else 0.0))
             chosen_by_tribe[tid] = {
-                **b,
-                "bot_id": tid,
-                "tribe_id": tid,
-                "bot_name": tribe_label(t_idx),
-                "age": old_age + 1,
-                "live_prestige": max(float(b.get("live_prestige", 0.0)), old_pr),
+                **b, "bot_id": tid, "tribe_id": tid, "bot_name": tribe_label(t_idx),
+                "age": old_age + 1, "live_prestige": auth_pr,
             }
         else:
-            outsiders.append(b)
+            outsiders.append({**b, "live_prestige": 0.0})
 
     dynasties = list(chosen_by_tribe.values())
     dynasties.sort(
         key=lambda x: (
-            1 if x["eval"]["recent_6_draws"] >= 1 else 0,
             x["eval"]["fitness"] + float(x.get("live_prestige", 0.0)),
             x["eval"]["winning_draws"],
+            x["eval"]["recent_6_draws"],
         ),
         reverse=True,
     )
 
-    # Allow superior outsider scouts to usurp the weakest stagnant dynasty slot
     if outsiders and len(dynasties) >= survivor_cap:
         best_out = outsiders[0]
         weakest = dynasties[-1]
-        out_score = best_out["eval"]["fitness"] + (3_500_000.0 if best_out["eval"]["recent_6_draws"] >= 1 else 0.0)
-        wk_score = weakest["eval"]["fitness"] + float(weakest.get("live_prestige", 0.0)) + (3_500_000.0 if weakest["eval"]["recent_6_draws"] >= 1 else 0.0)
-        if out_score > wk_score and float(weakest.get("live_prestige", 0.0)) == 0.0:
+        if best_out["eval"]["fitness"] > (weakest["eval"]["fitness"] + float(weakest.get("live_prestige", 0.0))) and float(weakest.get("live_prestige", 0.0)) == 0.0:
             tid = weakest["tribe_id"]
             t_idx = int(tid.split("-")[1]) if tid.split("-")[1].isdigit() else 0
-            dynasties[-1] = {**best_out, "bot_id": tid, "tribe_id": tid, "bot_name": tribe_label(t_idx), "age": 1}
+            dynasties[-1] = {**best_out, "bot_id": tid, "tribe_id": tid, "bot_name": tribe_label(t_idx), "age": 1, "live_prestige": float(pmap.get(tid, 0.0))}
             outsiders.pop(0)
 
     while len(dynasties) < survivor_cap and outsiders:
@@ -104,8 +95,10 @@ def select_diverse_dynasties(
         while any(d.get("tribe_id") == tid for d in dynasties):
             t_idx += 1
             tid = f"tribe-{t_idx}"
-        dynasties.append({**nb, "bot_id": tid, "tribe_id": tid, "bot_name": tribe_label(t_idx), "age": max(1, int(nb.get("age", 1)))})
+        dynasties.append({
+            **nb, "bot_id": tid, "tribe_id": tid, "bot_name": tribe_label(t_idx),
+            "age": 1, "live_prestige": float(pmap.get(tid, 0.0)),
+        })
 
     survivors = dynasties[:survivor_cap]
-    culled = max(0, len(ranked) - len(survivors))
-    return survivors, culled
+    return survivors, max(0, len(ranked) - len(survivors))

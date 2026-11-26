@@ -5,7 +5,12 @@ import { Sparkles, Copy, Check, Dna, Lock } from "lucide-react";
 import { GoldenSignalRowCard } from "./home/GoldenSignalRowCard";
 
 const fmtBall = (n: number) => (n < 10 ? `0${n}` : `${n}`);
-const COUNCIL_ORDER = ["king", "runner_up", "consensus", "maverick"];
+const COUNCIL_SLOTS = [
+  { src: "king", prefOrigin: "raw_genome" },
+  { src: "runner_up", prefOrigin: "raw_genome" },
+  { src: "consensus", prefOrigin: "dna_golden" },
+  { src: "maverick", prefOrigin: "dna_golden" },
+];
 
 function selectDiverseTopRows(goldenRows: any[], tickets: any[]): any[] {
   const pool: any[] = [
@@ -15,6 +20,8 @@ function selectDiverseTopRows(goldenRows: any[], tickets: any[]): any[] {
         ticket_id: t.id || tIdx,
         council_source: fc.council_source || t.council_source || "",
         council_badge: fc.council_badge || t.council_badge || "",
+        row_origin: fc.row_origin || "dna_golden",
+        origin_badge: fc.origin_badge || (fc.row_origin === "raw_genome" ? "🧬 Nguyên Bản Gia Tộc" : "✨ Chuẩn Vàng 8/8 DNA"),
         row_label: `Vé #${tIdx + 1} • Dãy ${String.fromCharCode(65 + rIdx)}`,
         variant_name: t.variant_name,
         target_draw_period: t.target_draw_period,
@@ -25,12 +32,6 @@ function selectDiverseTopRows(goldenRows: any[], tickets: any[]): any[] {
     ...goldenRows,
   ];
 
-  pool.sort(
-    (a, b) =>
-      (b.jackpot_gates_passed ?? 0) - (a.jackpot_gates_passed ?? 0) ||
-      (b.row_beauty_score ?? 0) - (a.row_beauty_score ?? 0)
-  );
-
   const selected: any[] = [];
   const canAdd = (nums: number[], cap: number) =>
     nums.length === 6 &&
@@ -39,10 +40,17 @@ function selectDiverseTopRows(goldenRows: any[], tickets: any[]): any[] {
       return nums.filter((n) => exSet.has(n)).length > cap;
     });
 
-  for (const src of COUNCIL_ORDER) {
-    const pick =
-      pool.find((c) => c.council_source === src && canAdd(c.numbers || [], 2)) ||
-      pool.find((c) => c.council_source === src && canAdd(c.numbers || [], 3));
+  // Pass 1: 2 Raw Evolved Genome rows (King #1 + Live/Runner-Up) + 2 Golden 8/8 DNA rows (Consensus + Maverick)
+  for (const { src, prefOrigin } of COUNCIL_SLOTS) {
+    const cands = pool
+      .filter((c) => c.council_source === src)
+      .sort(
+        (a, b) =>
+          (a.row_origin === prefOrigin ? -1 : 1) - (b.row_origin === prefOrigin ? -1 : 1) ||
+          (b.jackpot_gates_passed ?? 0) - (a.jackpot_gates_passed ?? 0) ||
+          (b.row_beauty_score ?? 0) - (a.row_beauty_score ?? 0)
+      );
+    const pick = cands.find((c) => canAdd(c.numbers || [], 2)) || cands.find((c) => canAdd(c.numbers || [], 3));
     if (pick) selected.push(pick);
   }
 
@@ -70,7 +78,7 @@ export const GoldenSignalHeroBanner: React.FC<{
   const topRows = selectDiverseTopRows(goldenRows, tickets);
   if (topRows.length === 0) return null;
 
-  const perfectCnt = topRows.filter((r) => (r.jackpot_gates_passed ?? 0) >= 8).length;
+  const rawCnt = topRows.filter((r) => r.row_origin === "raw_genome").length;
   const period = topRows[0]?.target_draw_period || statusData.latest_ai_ticket?.target_draw_period || "";
   const drawDate = topRows[0]?.target_draw_date || statusData.latest_ai_ticket?.target_draw_date || "";
 
@@ -82,12 +90,7 @@ export const GoldenSignalHeroBanner: React.FC<{
 
   const handleCopyAll = () => {
     const allText = topRows
-      .map(
-        (r: any, i: number) =>
-          `#${i + 1} [${r.council_badge || r.row_label}]: ${(r.numbers || []).map(fmtBall).join(" ")}${
-            r.special_number ? ` + ĐB:${fmtBall(r.special_number)}` : ""
-          }`
-      )
+      .map((r: any, i: number) => `#${i + 1} [${r.council_badge || r.row_label} • ${r.origin_badge || ""}]: ${(r.numbers || []).map(fmtBall).join(" ")}${r.special_number ? ` + ĐB:${fmtBall(r.special_number)}` : ""}`)
       .join("\n");
     copyText("ALL", allText);
   };
@@ -99,7 +102,7 @@ export const GoldenSignalHeroBanner: React.FC<{
           <div className="flex flex-wrap items-center gap-2">
             <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wide bg-amber-50 text-amber-900 border border-amber-300">
               <Sparkles className="w-3.5 h-3.5 text-amber-700" />
-              {`HỘI ĐỒNG 4 NGUỒN ĐỘC LẬP • ${perfectCnt}/4 BỘ ĐẠT 8/8 CỔNG DNA`}
+              {`CƠ CHẾ KÉP • ${rawCnt} BỘ NGUYÊN BẢN GIA TỘC + ${topRows.length - rawCnt} BỘ CHUẨN VÀNG 8/8 DNA`}
             </span>
             <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-slate-100 text-slate-700 border border-slate-200">
               Kỳ #{period} • {drawDate} (18:00)
@@ -107,7 +110,7 @@ export const GoldenSignalHeroBanner: React.FC<{
             {evo?.generation && (
               <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold bg-slate-50 text-slate-700 border border-slate-200">
                 <Dna className={`w-3.5 h-3.5 text-slate-600 ${evo.running ? "animate-spin" : ""}`} />
-                Đời #{evo.generation.toLocaleString()} ({evo.squad_size || 12} quân) • Nổ {evo.recent_6_draws ?? 0}/{evo.recent_total || 15} kỳ gần ({evo.latest_6_date || "..."})
+                Đời #{evo.generation.toLocaleString()} ({evo.squad_size || 12} quân) • Tổng {evo.winning_draws ?? 0}/{evo.draws_in_window || 116} kỳ 6/6
               </span>
             )}
             {statusData.is_draw_locked && (
@@ -120,7 +123,7 @@ export const GoldenSignalHeroBanner: React.FC<{
             )}
           </div>
           <h3 className="text-xl md:text-2xl font-bold text-slate-900">
-            Bộ Dãy Số Đẹp Kỳ Sắp Tới ({gameCode === "power_6_55" ? "Power 6/55" : "Mega 6/45"} • Vua #1 + Á Quân + Đồng Thuận + Ngược Dòng)
+            Bộ Dãy Số Đẹp Kỳ Sắp Tới ({gameCode === "power_6_55" ? "Power 6/55" : "Mega 6/45"} • Giữ Nguyên Bản Số Gia Tộc + Chuẩn Vàng DNA)
           </h3>
         </div>
 

@@ -9,8 +9,9 @@ interface HeaderProps {
 }
 
 const NAV_TABS = [
-  { id: "ai_arena", label: "🎯 Số Đẹp & Đấu Trường AI" },
-  { id: "tickets_hub", label: "🏆 Sổ Vé & Trúng Thưởng" },
+  { id: "ai_arena", label: "🎯 Số Đẹp & Đấu Trường" },
+  { id: "tickets_hub", label: "🏆 Sổ Vé & Trúng" },
+  { id: "arena_logs", label: "📜 Nhật Ký Thi Đấu" },
   { id: "analytics", label: "📊 Thống Kê Cầu Số" },
 ];
 

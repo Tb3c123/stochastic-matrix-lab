@@ -52,9 +52,7 @@ export const AiTicketRowItem: React.FC<AiTicketRowItemProps> = ({
         )}
 
         <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full border bg-white text-slate-700 border-slate-200 shrink-0">
-          {forecast.council_badge ||
-            forecast.algorithm_name ||
-            (rIdx < 2 ? "AI Khai Thác" : rIdx === 2 ? "AI Chu Kỳ Trễ" : "AI Thăm Dò")}
+          {forecast.origin_badge || forecast.council_badge || forecast.algorithm_name || "AI Tiến Hóa"}
         </span>
 
         <div className="flex flex-wrap items-center gap-2">

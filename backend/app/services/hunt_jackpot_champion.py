@@ -9,6 +9,7 @@ from app.analytics.evo_engine import precompute_window_tensors
 from app.analytics.tournament_league import seed_initial_population, run_tournament_generation
 from app.services.evo_persistence import load_game_draws_and_seed, persist_alpha_record
 from app.services.live_arena_scorer import get_prestige_map
+from app.services.arena_log_store import append_arena_log
 from app.services.thermal_pacing import (
     resolve_horizon_days, is_night_boost_window, get_target_squad_size,
     get_draw_standby_info, compute_thermal_pacing,
@@ -59,12 +60,12 @@ async def hunt_for_game(
     latest_period, latest_draw_date, sealed_period = draws[-1].draw_period, draws[-1].draw_date, ""
     prev_state = read_hunter_status().get(game_code) or {}
     saved_g = prev_state.get("champion_weights") if (prev_state.get("champion_weights") or {}).get("heads") else None
+    prestige_map = get_prestige_map(game_code)
     population = seed_initial_population(saved_g or base_w, pop_size=get_target_squad_size(), max_num=game.max_number)
     if saved_g and population:
         population[0]["genome"] = saved_g
-    prestige_map = get_prestige_map(game_code)
     for b in population:
-        b["live_prestige"] = prestige_map.get(b["bot_id"], 0.0)
+        b["live_prestige"] = prestige_map.get(str(b.get("tribe_id") or ""), 0.0)
 
     init_gate = 2 if is_power else 3
     best_sig, min_total_gate = (-1.0, -1, -1), init_gate
@@ -78,64 +79,53 @@ async def hunt_for_game(
             standby = get_draw_standby_info(game_code, latest_draw_date)
             if standby["locked"] or (gen > 0 and gen % 30 == 0):
                 _, fresh_draws, _ = await load_game_draws_and_seed(game_code)
+                prestige_map = get_prestige_map(game_code)
                 if fresh_draws and fresh_draws[-1].draw_period != latest_period:
                     latest_period, latest_draw_date = fresh_draws[-1].draw_period, fresh_draws[-1].draw_date
                     tensors = await asyncio.to_thread(precompute_window_tensors, fresh_draws, game.max_number, eff_days, is_power)
-                    prestige_map = get_prestige_map(game_code)
                     for b in population:
-                        b["eval"], b["live_prestige"] = None, prestige_map.get(b["bot_id"], b.get("live_prestige", 0.0))
+                        b["eval"], b["live_prestige"] = None, prestige_map.get(str(b.get("tribe_id") or ""), 0.0)
                     best_sig, min_total_gate, stagnation, t0 = (-1.0, -1, -1), init_gate, 0, time.monotonic()
                     standby = get_draw_standby_info(game_code, latest_draw_date)
             if standby["locked"]:
                 if sealed_period != latest_period:
-                    eb = sorted([b for b in population if b.get("eval")], key=lambda x: (1 if x["eval"]["recent_6_draws"] >= 1 else 0, x["eval"]["fitness"]), reverse=True)
+                    eb = sorted([b for b in population if b.get("eval")], key=lambda x: x["eval"]["fitness"], reverse=True)
                     if eb:
                         champ_version += 1
                         saved_hist_cnt = (await persist_alpha_record(game_code, gen, eb[0], eb[:4], full_population=population, force_final_seal=True))["saved_history"]
+                        append_arena_log(game_code, "standby", gen, "draw_standby", f"🔒 Đã chốt cứng Bộ Số Cuối sau kỳ #{latest_period} (16:30) • Tạm nghỉ chờ kết quả quay 18:35.", {"champion_name": eb[0]["bot_name"], "winning_draws": eb[0]["eval"]["winning_draws"], "draws_total": len(tensors)}, persist_disk=True)
                     sealed_period = latest_period
-                _ACTIVE_STATE[game_code] = {
-                    **(dict(_ACTIVE_STATE.get(game_code) or prev_state)),
-                    "running": False, "mode": "draw_standby", "standby_phase": standby["phase"], "is_draw_locked": True,
-                    "latest_period": latest_period, "latest_draw_date": latest_draw_date,
-                    "champion_version": champ_version, "epochs_per_sec": 0.0, "updated_at": datetime.utcnow().isoformat(),
-                }
+                _ACTIVE_STATE[game_code] = {**(dict(_ACTIVE_STATE.get(game_code) or prev_state)), "running": False, "mode": "draw_standby", "standby_phase": standby["phase"], "is_draw_locked": True, "latest_period": latest_period, "latest_draw_date": latest_draw_date, "champion_version": champ_version, "epochs_per_sec": 0.0, "updated_at": datetime.utcnow().isoformat()}
                 _flush_status()
                 await asyncio.sleep(15.0)
                 continue
 
         gen += 1
         target_sz = get_target_squad_size() if infinite else len(population)
-        out = await asyncio.to_thread(run_tournament_generation, population, tensors, game.max_number, is_power, gen, stagnation, target_sz)
+        out = await asyncio.to_thread(run_tournament_generation, population, tensors, game.max_number, is_power, gen, stagnation, target_sz, None, prestige_map)
         champ_bot, ev = out["champion"], out["champion"]["eval"]
         total_culled += out["culled_count"]
         cur_sig = (ev["fitness"] + float(champ_bot.get("live_prestige", 0.0)), ev["winning_draws"], ev["recent_6_draws"])
-        qualifies = (not infinite and (gen == max_epochs or cur_sig > best_sig)) or (
-            infinite and ev["recent_6_draws"] >= 1 and ev["winning_draws"] >= min_total_gate and cur_sig > best_sig
-        )
-        if qualifies or (infinite and gen == 20 and ev["recent_6_draws"] >= 1):
+        qualifies = (not infinite and (gen == max_epochs or cur_sig > best_sig)) or (infinite and ev["recent_6_draws"] >= 1 and ev["winning_draws"] >= min_total_gate and cur_sig > best_sig)
+        mode, auto_pause = compute_thermal_pacing(ev["recent_6_draws"], stagnation, time.monotonic() - t0, total_6_draws=ev["winning_draws"], min_gate=init_gate)
+
+        log_stats = {"champion_name": champ_bot["bot_name"], "winning_draws": ev["winning_draws"], "draws_total": len(tensors), "recent_6_draws": ev["recent_6_draws"], "recent_total": ev["recent_total"], "latest_6_date": ev["latest_6_date"], "fitness": ev["fitness"], "live_prestige": round(float(champ_bot.get("live_prestige", 0.0))), "top_tribes": [f"{b['bot_name']} ({b['winning_draws']} kỳ • {b['age']}đ)" for b in out["leaderboard"][:3]]}
+        if qualifies or (infinite and gen == 15 and ev["recent_6_draws"] >= 1):
             if qualifies:
                 best_sig, stagnation, min_total_gate = cur_sig, 0, max(min_total_gate, ev["winning_draws"])
             champ_version += 1
             top_valid = sorted([b for b in out["next_population"] if b.get("eval")], key=lambda x: x["eval"]["fitness"], reverse=True)[:4] or [champ_bot]
             saved_hist_cnt = (await persist_alpha_record(game_code, gen, champ_bot, top_valid, full_population=out["next_population"]))["saved_history"]
+            append_arena_log(game_code, "record", gen, mode, f"🏆 Phá kỷ lục Đời #{gen}: {champ_bot['bot_name']} khóa {ev['winning_draws']}/{len(tensors)} kỳ 6/6 (30 kỳ gần: {ev['recent_6_draws']}/{ev['recent_total']} • Mới nhất {ev['latest_6_date']}).", log_stats, persist_disk=True)
         else:
             stagnation += 1
+            if infinite and gen % 15 == 0:
+                append_arena_log(game_code, "round", gen, mode, f"⚔️ Đời #{gen} ({len(out['next_population'])} quân): Dẫn đầu {champ_bot['bot_name']} • {ev['winning_draws']}/{len(tensors)} kỳ 6/6 • Đang rèn {ev['match_5']} dãy tiệm cận 5/6.", log_stats, persist_disk=False)
 
         population = out["next_population"]
         now = time.monotonic()
-        mode, auto_pause = compute_thermal_pacing(ev["recent_6_draws"], stagnation, now - t0, total_6_draws=ev["winning_draws"], min_gate=init_gate)
-        is_running = (infinite and mode != "day_idle") or (not infinite and gen < max_epochs)
-        if now - last_flush >= 2.0 or not is_running or stagnation == 0 or mode == "day_idle":
-            _ACTIVE_STATE[game_code] = {
-                "running": is_running, "mode": mode, "standby_phase": "active", "is_draw_locked": False,
-                "latest_period": latest_period, "latest_draw_date": latest_draw_date, "squad_size": len(population),
-                "days_back": eff_days, "draws_in_window": len(tensors), "generation": gen, "epochs_done": gen,
-                "max_epochs": max_epochs, "epochs_per_sec": 0.0 if mode == "day_idle" else round(1.0 / max(0.04, auto_pause + 0.03), 2),
-                "champion_version": champ_version, "champion_name": champ_bot["bot_name"], "champion_age": champ_bot["age"],
-                "live_prestige": round(float(champ_bot.get("live_prestige", 0.0))), "champion_weights": champ_bot["genome"],
-                **{k: ev[k] for k in _EVAL_COPY_KEYS}, "total_culled": total_culled, "leaderboard": out["leaderboard"],
-                "saved_history_tickets": saved_hist_cnt, "updated_at": datetime.utcnow().isoformat(),
-            }
+        if now - last_flush >= 2.0 or stagnation == 0 or not infinite:
+            _ACTIVE_STATE[game_code] = {"running": infinite or gen < max_epochs, "mode": mode, "standby_phase": "active", "is_draw_locked": False, "latest_period": latest_period, "latest_draw_date": latest_draw_date, "squad_size": len(population), "days_back": eff_days, "draws_in_window": len(tensors), "generation": gen, "epochs_done": gen, "max_epochs": max_epochs, "epochs_per_sec": round(1.0 / max(0.04, auto_pause + 0.03), 2), "champion_version": champ_version, "champion_name": champ_bot["bot_name"], "champion_age": champ_bot["age"], "live_prestige": round(float(champ_bot.get("live_prestige", 0.0))), "champion_weights": champ_bot["genome"], **{k: ev[k] for k in _EVAL_COPY_KEYS}, "total_culled": total_culled, "leaderboard": out["leaderboard"], "saved_history_tickets": saved_hist_cnt, "updated_at": datetime.utcnow().isoformat()}
             _flush_status(persist_disk=(stagnation == 0 and ev["recent_6_draws"] >= 1))
             last_flush = now
         pause = sleep_sec if sleep_sec is not None else auto_pause

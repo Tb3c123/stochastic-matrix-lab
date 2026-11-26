@@ -10,12 +10,12 @@ export const TournamentArenaBoard: React.FC<{
   if (!evo || !evo.generation) return null;
 
   const rec6 = Number(evo.recent_6_draws || 0);
-  const recTot = Number(evo.recent_total || 15);
+  const recTot = Number(evo.recent_total || 30);
   const win6Draws = Number(evo.winning_draws || 0);
   const totalDraws = Number(evo.draws_in_window || 117);
   const monthsLabel = `${Math.max(3, Math.round(Number(evo.days_back || 270) / 30))} Tháng`;
   const squadSz = Number(evo.squad_size || 12);
-  const pctBar = Math.min(100, Math.round((rec6 / Math.max(1, recTot)) * 100));
+  const pctBar = Math.min(100, Math.round((win6Draws / Math.max(1, totalDraws)) * 100));
   const board: any[] = evo.leaderboard || [];
 
   return (
@@ -50,9 +50,7 @@ export const TournamentArenaBoard: React.FC<{
               ? "⏸️ Tạm Nghỉ Chờ Xổ (0% CPU)"
               : evo.mode === "night_boost" || evo.mode === "night_cooldown"
                 ? "🌙 36 Quân Đêm (00:30–07:00)"
-                : evo.mode === "day_idle"
-                  ? "💤 Ngủ Đông 0% CPU"
-                  : "🍃 12 Quân Eco (<1% CPU)"}
+                : "🍃 12 Quân Chạy Liên Tục (<1.5% CPU)"}
           </b>{" "}
           • Vua: <b className="text-amber-800">v{evo.champion_version || 1}</b>
         </div>
@@ -62,7 +60,7 @@ export const TournamentArenaBoard: React.FC<{
         <div className="md:col-span-2 rounded-xl bg-amber-50/50 border border-amber-200 p-4 space-y-2">
           <div className="flex items-center justify-between text-xs text-slate-600">
             <span className="font-bold flex items-center gap-1.5 text-amber-900">
-              <Trophy className="w-4 h-4 text-amber-700" /> NỔ 6/6 Ở {recTot} KỲ GẦN HÔM NAY NHẤT
+              <Trophy className="w-4 h-4 text-amber-700" /> CÔNG PHÁ 6/6 TOÀN DẢI {monthsLabel.toUpperCase()} (KHÔNG TRẦN)
             </span>
             <span className="font-mono font-bold text-emerald-800">
               Mới nhất: {evo.latest_6_date || "Đang khóa..."}
@@ -70,7 +68,7 @@ export const TournamentArenaBoard: React.FC<{
           </div>
           <div className="flex items-baseline gap-3">
             <span className="text-3xl font-extrabold text-amber-900 font-mono">
-              {rec6} / {recTot} KỲ GẦN
+              {win6Draws} / {totalDraws} KỲ 6/6
             </span>
             <span className="text-xs text-slate-600">
               Quán quân: <b className="text-slate-900">{evo.champion_name}</b>
@@ -83,10 +81,10 @@ export const TournamentArenaBoard: React.FC<{
 
         <div className="rounded-xl bg-slate-50 border border-slate-200 p-4 flex flex-col justify-between">
           <span className="text-xs font-bold text-emerald-800 flex items-center gap-1">
-            <Crosshair className="w-3.5 h-3.5" /> Bề Dày {monthsLabel} Lịch Sử
+            <Crosshair className="w-3.5 h-3.5" /> Mũi Nhọn {recTot} Kỳ Gần Nhất
           </span>
           <div className="text-2xl font-extrabold text-slate-900 font-mono">
-            {win6Draws} / {totalDraws} <span className="text-xs text-slate-500 font-normal">kỳ 6/6</span>
+            {rec6} / {recTot} <span className="text-xs text-slate-500 font-normal">kỳ gần</span>
           </div>
           <span className="text-[11px] text-slate-600">
             Tiệm cận sắp nổ thêm: <b className="text-slate-900">{evo.match_5 || 0} dãy 5/6</b>

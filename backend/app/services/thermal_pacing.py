@@ -27,11 +27,6 @@ def get_target_squad_size(now_vn: Optional[datetime] = None) -> int:
 def get_draw_standby_info(
     game_code: str, latest_draw_date: str = "", now_vn: Optional[datetime] = None,
 ) -> Dict[str, Any]:
-    """4-phase draw-day controller:
-    - active (<16:30 or non-draw day or today's result already landed)
-    - final_buy_window (16:30-17:45 on draw day before sales close)
-    - waiting_official_result (17:45-21:30 until today's official draw lands in DB)
-    """
     dt = now_vn or datetime.now(VN_TZ)
     today_str = dt.strftime("%Y-%m-%d")
     is_draw_day = (dt.weekday() in (2, 4, 6)) if game_code == "mega_6_45" else (dt.weekday() in (1, 3, 5))
@@ -49,10 +44,9 @@ def compute_thermal_pacing(
     recent_6_draws: int, stagnation: int, elapsed_sec: float,
     now_vn: Optional[datetime] = None, total_6_draws: int = 4, min_gate: int = 3,
 ) -> Tuple[str, float]:
+    """Continuous thermal-safe pacing: NEVER stops for stagnation (only pauses in 16:30-18:35 draw_standby)."""
     if is_night_boost_window(now_vn):
-        return ("night_cooldown", 8.0) if stagnation >= 2500 else ("night_boost", 0.24)
-    if (recent_6_draws == 0 or total_6_draws < min_gate) and elapsed_sec < 300.0:
-        return "warmup", 0.04
-    if stagnation >= 500:
-        return "day_idle", 45.0
-    return "day_eco", 2.2
+        return ("night_cooldown", 3.2) if stagnation >= 4000 else ("night_boost", 0.26)
+    if (recent_6_draws == 0 or total_6_draws < min_gate) and elapsed_sec < 180.0:
+        return "warmup", 0.06
+    return "day_eco", 2.5

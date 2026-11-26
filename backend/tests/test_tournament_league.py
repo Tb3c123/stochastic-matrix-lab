@@ -57,14 +57,16 @@ def test_anti_clone_dynasties_row_locking_and_ensemble_council():
     tensors = precompute_window_tensors(draws, max_num=45, days_back=80, is_power=False)
     rng = random.Random(123)
     pop = seed_initial_population(None, pop_size=12, max_num=45, rng=rng)
+    fake_prestige = {"tribe-0": 150_000.0}
     out = None
     for gen in range(1, 7):
-        out = run_tournament_generation(pop, tensors, 45, False, gen, target_pop_size=12, rng=rng)
+        out = run_tournament_generation(pop, tensors, 45, False, gen, target_pop_size=12, rng=rng, prestige_map=fake_prestige)
         pop = out["next_population"]
 
     board = out["leaderboard"]
     assert len(board) == 6
     assert all(b["age"] >= 2 for b in board)
+    assert sum(1 for b in board if b["live_prestige"] > 0) == 1
     surv_sigs = {genome_signature(b["genome"]) for b in pop[:6]}
     assert len(surv_sigs) == 6
 
@@ -78,6 +80,7 @@ def test_anti_clone_dynasties_row_locking_and_ensemble_council():
     plans = build_ensemble_ticket_plans("mega_6_45", pop, tensors[-1], 45, False)
     assert [p["council_source"] for p in plans] == ["king", "runner_up", "consensus", "maverick"]
     assert all(len(p["rows"]) == 5 for p in plans)
+    assert plans[0]["origins"][:2] == ["raw_genome", "raw_genome"]
 
 
 def test_draw_freeze_and_elastic_schedule():
@@ -102,8 +105,8 @@ def test_draw_freeze_and_elastic_schedule():
     assert get_target_squad_size(t_0700) == 12
     assert resolve_horizon_days("mega_6_45", 0) == 270
     assert resolve_horizon_days("power_6_55", 0) == 365
-    assert compute_thermal_pacing(0, 5, 10.0, t_0700, total_6_draws=1) == ("warmup", 0.04)
-    assert compute_thermal_pacing(2, 10, 120.0, t_0700, total_6_draws=5) == ("day_eco", 2.2)
+    assert compute_thermal_pacing(0, 5, 10.0, t_0700, total_6_draws=1) == ("warmup", 0.06)
+    assert compute_thermal_pacing(2, 99999, 500.0, t_0700, total_6_draws=20) == ("day_eco", 2.5)
 
 
 @pytest.mark.asyncio

@@ -19,10 +19,21 @@ export const GoldenSignalRowCard: React.FC<{
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex flex-wrap items-center gap-1.5">
           <span className="px-2.5 py-1 rounded-lg bg-slate-900 text-white font-bold text-xs">
-            BỘ #{idx + 1} • {gr.jackpot_gates_passed ?? 8}/8 DNA ({gr.row_beauty_score ?? 98.5}đ)
+            BỘ #{idx + 1} • {gr.jackpot_gates_passed ?? 8}/8 DNA
           </span>
+          {gr.origin_badge && (
+            <span
+              className={`px-2 py-1 rounded-lg font-semibold text-[11px] border ${
+                gr.row_origin === "raw_genome"
+                  ? "bg-emerald-50 border-emerald-300 text-emerald-900"
+                  : "bg-amber-50 border-amber-200 text-amber-900"
+              }`}
+            >
+              {gr.origin_badge}
+            </span>
+          )}
           {gr.council_badge && (
-            <span className="px-2.5 py-1 rounded-lg bg-amber-50 border border-amber-200 text-amber-900 font-semibold text-[11px]">
+            <span className="px-2 py-1 rounded-lg bg-slate-100 border border-slate-200 text-slate-800 font-semibold text-[11px]">
               {gr.council_badge}
             </span>
           )}

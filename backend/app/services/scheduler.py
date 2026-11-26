@@ -11,6 +11,7 @@ from app.crawler.manager import CrawlerManager
 from app.analytics.hybrid_learning import execute_auto_cycle_pipeline
 from app.services.hunt_jackpot_champion import run_autonomous_hunter_daemon
 from app.services.live_arena_scorer import score_squad_on_official_draw
+from app.services.arena_log_store import append_arena_log
 from app.services.api_cache import invalidate_game_cache
 from app.routers.tickets import evaluate_pending_tickets_core
 
@@ -69,6 +70,7 @@ async def auto_cycle_worker():
                                         # Auto evaluate pending tickets & re-trigger background Jackpot Hunter
                                         eval_res = await evaluate_pending_tickets_core(session, g_code)
                                         live_sc = score_squad_on_official_draw(g_code, latest.draw_period, latest.winning_numbers)
+                                        append_arena_log(g_code, "live_score", 0, "live_1835", f"⚡ Kết quả thật kỳ #{latest.draw_period} ({today_str}): {latest.winning_numbers} • Có {live_sc.get('winners', 0)} Gia Tộc ghi điểm thực chiến!", {"champion_name": "Hệ Thống Chấm 18:35"}, persist_disk=True)
                                         invalidate_game_cache(g_code)
                                         logger.info(f"[18:35 Draw Sync] Auto-eval {g_code}: {eval_res.get('message')} | Live winners={live_sc.get('winners')}")
                                         asyncio.create_task(run_autonomous_hunter_daemon(days_back=0, max_epochs=0))

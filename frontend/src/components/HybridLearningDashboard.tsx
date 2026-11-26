@@ -7,18 +7,19 @@ import { GoldenSignalHeroBanner } from "./GoldenSignalHeroBanner";
 import { TournamentArenaBoard } from "./hybrid-learning/TournamentArenaBoard";
 import { ChampionGenomeStrip } from "./hybrid-learning/ChampionGenomeStrip";
 import { AiTicketRowsPanel } from "./hybrid-learning/AiTicketRowsPanel";
-import { LearningLogsPanel } from "./hybrid-learning/LearningLogsPanel";
 
 interface HybridLearningProps {
   gameCode: string;
   refreshTrigger?: number;
   onChampionUpgraded?: () => void;
+  onOpenArenaLogs?: () => void;
 }
 
 export const HybridLearningDashboard: React.FC<HybridLearningProps> = ({
   gameCode,
   refreshTrigger = 0,
   onChampionUpgraded,
+  onOpenArenaLogs,
 }) => {
   const [statusData, setStatusData] = useState<any>(() => getClientCache(`status:${gameCode}`) || null);
   const [activeTicketIdx, setActiveTicketIdx] = useState<number>(0);
@@ -79,7 +80,6 @@ export const HybridLearningDashboard: React.FC<HybridLearningProps> = ({
         : [];
   const selectedTicket =
     latestAiTickets[activeTicketIdx] || latestAiTickets[0] || null;
-  const learningLogs = statusData.learning_logs || [];
 
   return (
     <div className="space-y-6">
@@ -101,7 +101,17 @@ export const HybridLearningDashboard: React.FC<HybridLearningProps> = ({
         />
       )}
 
-      <LearningLogsPanel learningLogs={learningLogs} />
+      <div className="flex items-center justify-between bg-white border border-slate-200 rounded-xl px-4 py-3 text-xs">
+        <span className="text-slate-600">
+          Nhật ký tự học & kết quả từng nhịp thi đấu được ghi liên tục tại trang chuyên biệt:
+        </span>
+        <button
+          onClick={onOpenArenaLogs}
+          className="px-3 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-white font-bold cursor-pointer transition-colors"
+        >
+          📜 Xem Trang Nhật Ký Thi Đấu →
+        </button>
+      </div>
     </div>
   );
 };

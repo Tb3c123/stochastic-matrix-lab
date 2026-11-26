@@ -94,7 +94,7 @@ def crossover_gladiators(
     child_g = mutate_genome({**ga, "heads": chosen_heads}, sigma=sigma, max_num=max_num, rng=r)
     return {
         "bot_id": f"gen{generation}-c{idx}", "tribe_id": tid, "bot_name": pa["bot_name"],
-        "age": int(pa.get("age", 1)), "live_prestige": float(pa.get("live_prestige", 0.0)), "genome": child_g, "eval": None,
+        "age": int(pa.get("age", 1)), "live_prestige": 0.0, "genome": child_g, "eval": None,
     }
 
 
@@ -102,6 +102,7 @@ def run_tournament_generation(
     population: List[Dict[str, Any]], tensors: List[Dict[str, Any]], max_num: int,
     is_power: bool, generation: int, stagnation_gens: int = 0,
     target_pop_size: Optional[int] = None, rng: Optional[random.Random] = None,
+    prestige_map: Optional[Dict[str, float]] = None,
 ) -> Dict[str, Any]:
     r = rng or random
     next_size = max(8, target_pop_size or len(population))
@@ -112,14 +113,13 @@ def run_tournament_generation(
     ranked = sorted(
         population,
         key=lambda b: (
-            1 if b["eval"]["recent_6_draws"] >= 1 else 0,
-            b["eval"]["fitness"] + float(b.get("live_prestige", 0.0)),
+            b["eval"]["fitness"] + float((prestige_map or {}).get(str(b.get("tribe_id") or ""), b.get("live_prestige", 0.0))),
             b["eval"]["winning_draws"],
             b["eval"]["recent_6_draws"],
         ),
         reverse=True,
     )
-    elites, culled_count = select_diverse_dynasties(ranked, next_size, r)
+    elites, culled_count = select_diverse_dynasties(ranked, next_size, r, prestige_map=prestige_map)
     leaderboard = [
         {
             "rank": r_idx + 1, "bot_id": b["bot_id"], "bot_name": b["bot_name"], "age": b["age"],
