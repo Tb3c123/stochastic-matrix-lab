@@ -48,6 +48,32 @@ def test_sniper_closure_row_allows_closing_sixth_ball_over_5of6():
     assert (row & near_miss_mask).bit_count() >= 4
 
 
+from pathlib import Path
+from app.services.evo_checkpoint import save_season_checkpoint, load_season_checkpoint, clear_season_checkpoint
+
+
+def test_season_checkpoint_resumes_same_period_and_resets_on_new_draw(tmp_path: Path):
+    ckpt_file = tmp_path / "evo_season_checkpoint.json"
+    pop = [_make_bot(f"tribe-{i}", 100.0, set(), offset=i) for i in range(6)]
+    save_season_checkpoint(
+        "mega_6_45", "01594", "2026-11-27", gen=2450, champ_version=9,
+        saved_hist_cnt=464, stagnation=12, total_culled=9800,
+        best_sig=(1, 2, 10_500_000.0, 14), best_m6=(1, 2), population=pop, path=ckpt_file,
+    )
+    resumed = load_season_checkpoint("mega_6_45", "01594", {"tribe-0": 25000.0}, path=ckpt_file)
+    assert resumed is not None
+    assert resumed["gen"] == 2450
+    assert resumed["champ_version"] == 9
+    assert resumed["best_m6"] == (1, 2)
+    assert len(resumed["population"]) == 6
+    assert resumed["population"][0]["live_prestige"] == 25000.0
+
+    # Brand-new official draw -> MUST NOT resume (100% fresh anti-rote season!)
+    assert load_season_checkpoint("mega_6_45", "01595", {}, path=ckpt_file) is None
+    clear_season_checkpoint("mega_6_45", path=ckpt_file)
+    assert load_season_checkpoint("mega_6_45", "01594", {}, path=ckpt_file) is None
+
+
 def test_winning_history_strictly_separates_live_and_backtest():
     live_t = SimpleNamespace(
         id=1, game_code="mega_6_45", strategy="hybrid_ai_learned", target_draw_period="01593",
