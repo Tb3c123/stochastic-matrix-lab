@@ -13,7 +13,7 @@ export const ChampionGenomeStrip: React.FC<{ evo: any }> = ({ evo }) => {
     { label: "Tương Hợp Cặp Số", val: `${Math.round((g.w_pair || 0) * 100)}%`, cls: "text-blue-800" },
     { label: "Tâm Chuông Gauss", val: `${Math.round((g.w_gauss_sum || 0) * 100)}%`, cls: "text-emerald-800" },
     { label: "Phễu Chọn Số (Pool)", val: `${g.pool_size || 24} số`, cls: "text-slate-900" },
-    { label: "Bước Xoay / Chống Trùng", val: `S=${g.wheel_stride || 5} • ≤${g.max_overlap || 3} số`, cls: "text-slate-700" },
+    { label: "Bước Xoay / Bánh Xe 6/6", val: `S=${g.wheel_stride || 5} • 3 Phễu + 2 Bắn Tỉa`, cls: "text-slate-700" },
   ];
 
   return (
@@ -24,7 +24,7 @@ export const ChampionGenomeStrip: React.FC<{ evo: any }> = ({ evo }) => {
           Hồ Sơ Bộ Gen 10 Tham Số Của Quán Quân ({evo.champion_name})
         </span>
         <span className="text-[11px] text-slate-500 font-mono">
-          100% Công thức xác định • Tự động truyền lại cho kỳ tới
+          100% Công thức toán học • Xóa trắng mỗi kỳ mới • Lưu checkpoint chống sụp
         </span>
       </div>
 

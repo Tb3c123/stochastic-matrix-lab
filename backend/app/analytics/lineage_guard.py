@@ -76,7 +76,9 @@ def select_diverse_dynasties(
 
     seen_sigs: Set[Tuple[Any, ...]] = set()
     chosen_by_tribe: Dict[str, Dict[str, Any]] = {}
+    m6_bucket_counts: Dict[frozenset, int] = {}
     outsiders: List[Dict[str, Any]] = []
+    max_same_m6 = max(3, survivor_cap // 2)
 
     for b in ranked:
         sig = genome_signature(b["genome"])
@@ -84,11 +86,15 @@ def select_diverse_dynasties(
             continue
         seen_sigs.add(sig)
         tid = str(b.get("tribe_id") or "")
-        if tid.startswith("tribe-") and tid not in chosen_by_tribe and _is_divergent_enough(b["genome"], list(chosen_by_tribe.values()), 0):
+        m6_key = frozenset(_bot_m6_set(b))
+        under_m6_cap = (not m6_key) or (m6_bucket_counts.get(m6_key, 0) < max_same_m6)
+        if tid.startswith("tribe-") and tid not in chosen_by_tribe and under_m6_cap and _is_divergent_enough(b["genome"], list(chosen_by_tribe.values()), 0):
             old_age = tribe_ages.get(tid, int(b.get("age", 1)))
             t_idx = int(tid.split("-")[1]) if tid.split("-")[1].isdigit() else 0
             auth_pr = float(pmap.get(tid, b.get("live_prestige", 0.0) if prestige_map is None else 0.0))
             chosen_by_tribe[tid] = {**b, "bot_id": tid, "tribe_id": tid, "bot_name": tribe_label(t_idx), "age": old_age + 1, "live_prestige": auth_pr}
+            if m6_key:
+                m6_bucket_counts[m6_key] = m6_bucket_counts.get(m6_key, 0) + 1
         else:
             outsiders.append({**b, "live_prestige": 0.0})
 

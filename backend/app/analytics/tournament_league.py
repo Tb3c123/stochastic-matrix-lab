@@ -57,7 +57,7 @@ def crossover_gladiators(
     tid = pa.get("tribe_id") or f"tribe-{idx % 6}"
     heads_a = ga.get("heads") or [make_specialist_head(ga, max_num=max_num, rng=r) for _ in range(4)]
     heads_b = gb.get("heads") or [make_specialist_head(gb, max_num=max_num, rng=r) for _ in range(4)]
-    sigma = 0.06 if stagnation_gens < 10 else 0.11
+    sigma = 0.06 if stagnation_gens < 10 else (0.15 if stagnation_gens >= 300 else 0.11)
 
     chosen_heads: List[Dict[str, Any]] = []
     has_funnel_6 = int((pa.get("eval") or {}).get("funnel_6_draws", 0)) > 0 or int((pa.get("eval") or {}).get("match_5", 0)) > 0
@@ -112,7 +112,11 @@ def run_tournament_generation(
     while len(next_pop) < next_size - scout_slots:
         c_i += 1
         pa = elites[(generation + c_i - 1) % len(elites)]
-        pb = r.choice(elites)
+        if stagnation_gens >= 300 and c_i % 2 == 0:
+            _, tmpl = r.choice(ARCHETYPE_SEEDS)
+            pb = {"genome": mutate_genome(tmpl, sigma=0.14, max_num=max_num, rng=r)}
+        else:
+            pb = r.choice(elites)
         next_pop.append(crossover_gladiators(pa, pb, generation + 1, c_i, max_num=max_num, stagnation_gens=stagnation_gens, rng=r))
     while len(next_pop) < next_size:
         _, tmpl = r.choice(ARCHETYPE_SEEDS)

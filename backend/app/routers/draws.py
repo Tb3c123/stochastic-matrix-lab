@@ -82,7 +82,7 @@ async def sync_now(
     db: AsyncSession = Depends(get_db_session),
 ):
     """Force sync recent draws from mirror and evaluate any pending tickets."""
-    from app.routers.tickets import evaluate_pending_tickets_core
+    from app.services.tickets.evaluator import evaluate_pending_tickets_core
 
     manager = CrawlerManager(db)
     targets = [game_code] if game_code else ["mega_6_45", "power_6_55"]

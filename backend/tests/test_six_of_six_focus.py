@@ -37,6 +37,15 @@ def test_lineage_guard_never_inverts_rank1_and_rank2():
     assert survivors[2]["tribe_id"] == "tribe-2"
 
 
+def test_lineage_guard_caps_same_m6_local_optimum():
+    """At most 3/6 dynasties may lock onto the exact same 6/6 draw so others keep hunting new 6/6 draws."""
+    same_m6 = [_make_bot(f"tribe-{i}", 10_200_000.0 - i * 1000, {99}, rec_6=1, f6=10, offset=i) for i in range(5)]
+    novel_hunter = _make_bot("tribe-5", 160_000.0, set(), rec_6=0, f6=22, offset=9)
+    survivors, _ = select_diverse_dynasties(same_m6 + [novel_hunter], next_size=12, rng=random.Random(7))
+    assert survivors[0]["tribe_id"] == "tribe-0"
+    assert any(s["eval"]["funnel_6_draws"] == 22 for s in survivors)
+
+
 def test_sniper_closure_row_allows_closing_sixth_ball_over_5of6():
     """Sniper closure must allow overlap <= 5 so a 5/6 row never blocks the 6/6 row."""
     funnel = list(range(1, 17))

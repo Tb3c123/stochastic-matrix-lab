@@ -102,7 +102,7 @@ export const GoldenSignalHeroBanner: React.FC<{
           <div className="flex flex-wrap items-center gap-2">
             <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wide bg-amber-50 text-amber-900 border border-amber-300">
               <Sparkles className="w-3.5 h-3.5 text-amber-700" />
-              {`CƠ CHẾ KÉP • ${rawCnt} BỘ NGUYÊN BẢN GIA TỘC + ${topRows.length - rawCnt} BỘ CHUẨN VÀNG 8/8 DNA`}
+              {`CƠ CHẾ KÉP • ${rawCnt} BỘ NGUYÊN BẢN GIA TỘC + ${topRows.length - rawCnt} BỘ TỐI ƯU DNA`}
             </span>
             <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-slate-100 text-slate-700 border border-slate-200">
               Kỳ #{period} • {drawDate} (18:00)

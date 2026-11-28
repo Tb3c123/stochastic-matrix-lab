@@ -13,7 +13,7 @@ from app.services.hunt_jackpot_champion import run_autonomous_hunter_daemon
 from app.services.live_arena_scorer import score_squad_on_official_draw
 from app.services.arena_log_store import append_arena_log
 from app.services.api_cache import invalidate_game_cache
-from app.routers.tickets import evaluate_pending_tickets_core
+from app.services.tickets.evaluator import evaluate_pending_tickets_core
 
 logger = logging.getLogger("AutoCycleScheduler")
 

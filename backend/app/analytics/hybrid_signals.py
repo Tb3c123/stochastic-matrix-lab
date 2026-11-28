@@ -8,7 +8,7 @@ def inspect_tickets_for_signals(
     evaluated_tickets: List[SavedTicket],
 ) -> Tuple[int, bool, List[int], List[int], Dict[str, float]]:
     """Inspect evaluated tickets for highest match, Jackpot 2, winless 8/8 DNA rows, and arm rewards."""
-    from app.routers.tickets import compute_ticket_beauty_evaluation
+    from app.services.tickets.beauty import compute_ticket_beauty_evaluation
 
     highest_match = 0
     hit_jp2 = False

@@ -55,7 +55,7 @@ def evaluate_and_build_ticket_record(
     special_numbers: List[Optional[int]], extra_analysis_fields: Optional[Dict[str, Any]] = None,
 ) -> Tuple[SavedTicket, int]:
     """Evaluate a 5-row ticket against target_draw and build SavedTicket ORM instance."""
-    from app.routers.tickets import analyze_ticket_probability
+    from app.services.tickets.forecast import analyze_ticket_probability
 
     is_power = game_code == "power_6_55"
     norm_sp = [(sp if is_power else None) for sp in (special_numbers or [None] * len(ticket_rows))]

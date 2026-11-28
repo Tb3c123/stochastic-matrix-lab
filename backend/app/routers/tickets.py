@@ -12,8 +12,7 @@ from app.schemas.common import ResponseEnvelope, ErrorDetail
 from app.schemas.ticket import SaveTicketRequest, EvaluateTicketsRequest
 from app.services.api_cache import get_cached, set_cached, invalidate_game_cache
 from app.services.tickets import (
-    compute_next_draw_date, compute_single_row_jackpot_forecast,
-    analyze_ticket_probability, compute_ticket_beauty_evaluation, evaluate_pending_tickets_core,
+    compute_next_draw_date, analyze_ticket_probability, evaluate_pending_tickets_core,
     build_listed_tickets, build_algorithms_performance, build_winning_history,
 )
 

@@ -109,7 +109,7 @@ async def evaluate_pending_tickets_core(db: AsyncSession, game_code: Optional[st
         })
 
     if evaluated_count > 0:
-        from app.analytics.hybrid_learning import recalibrate_hybrid_learning
+        from app.analytics.hybrid_recalibrate import recalibrate_hybrid_learning
         try:
             eval_by_game: Dict[str, List[SavedTicket]] = {}
             for t in pending_tickets:

@@ -72,7 +72,7 @@ async def generate_hybrid_ticket_rows_with_special(
 
 async def execute_auto_cycle_pipeline(db: AsyncSession, game_code: str) -> Dict[str, Any]:
     """Execute end-to-end v2.0 loop: Evaluate -> Idempotent Hedge Learn -> Wheel/DNA Generate."""
-    from app.routers.tickets import compute_next_draw_date, compute_single_row_jackpot_forecast, evaluate_pending_tickets_core, compute_ticket_beauty_evaluation
+    from app.services.tickets import compute_next_draw_date, compute_single_row_jackpot_forecast, evaluate_pending_tickets_core, compute_ticket_beauty_evaluation
 
     game = (await db.execute(select(LotteryGame).where(LotteryGame.code == game_code))).scalar_one_or_none()
     if not game:

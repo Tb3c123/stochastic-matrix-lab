@@ -29,7 +29,7 @@ def _build_latest_tickets_batch(
 ) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]], Any, Any, bool]:
     if not recent_tickets:
         return [], [], None, None, False
-    from app.routers.tickets import compute_ticket_beauty_evaluation
+    from app.services.tickets.beauty import compute_ticket_beauty_evaluation
 
     latest_period = recent_tickets[0].target_draw_period
     same_period = [t for t in reversed(recent_tickets) if t.target_draw_period == latest_period]

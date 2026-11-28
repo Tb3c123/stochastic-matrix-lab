@@ -24,7 +24,7 @@ async def upsert_alpha_upcoming_tickets(
     accuracy_pct: float = 0.0, full_population: Optional[List[Dict[str, Any]]] = None,
     force_final_seal: bool = False,
 ) -> Dict[str, Any]:
-    from app.routers.tickets import compute_next_draw_date, compute_single_row_jackpot_forecast, compute_ticket_beauty_evaluation
+    from app.services.tickets import compute_next_draw_date, compute_single_row_jackpot_forecast, compute_ticket_beauty_evaluation
 
     game = (await db.execute(select(LotteryGame).where(LotteryGame.code == game_code))).scalar_one_or_none()
     if not game or not top_bots:
