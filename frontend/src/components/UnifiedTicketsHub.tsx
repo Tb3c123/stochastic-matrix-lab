@@ -18,7 +18,7 @@ export const UnifiedTicketsHub: React.FC<{ gameCode: string; latestDraw?: any; r
   const [openRowAudits, setOpenRowAudits] = useState<Record<string, boolean>>({});
 
   const effectiveTier = viewMode === "live" ? "live_real_time" : tierFilter;
-  const { loading, summary, winningTickets, totalWinningRowsCount, pendingTickets, liveEvaluatedGroups, evaluatedGroups } =
+  const { loading, summary, winningTickets, totalWinningRowsCount, backtestJackpotCount, pendingTickets, liveEvaluatedGroups, evaluatedGroups } =
     useUnifiedTickets(gameCode, effectiveTier, refreshTrigger);
 
   const toggleRowAudit = (ticketId: number, rowIdx: number) =>
@@ -32,7 +32,7 @@ export const UnifiedTicketsHub: React.FC<{ gameCode: string; latestDraw?: any; r
   const modeTabs = [
     { id: "live" as const, icon: Zap, label: `Thắng Thời Gian Thật (${liveEvaluatedGroups.length} kỳ)` },
     { id: "pending" as const, icon: Clock, label: `Chờ Quay (${pendingTickets.length})` },
-    { id: "winning" as const, icon: Trophy, label: `Hồi Tố 6/6 (${winningTickets.length})` },
+    { id: "winning" as const, icon: Trophy, label: `Hồi Tố 6/6 (${backtestJackpotCount})` },
     { id: "all" as const, icon: ListChecks, label: `Đủ ${evaluatedGroups.length} Kỳ (${horizonLabel})` },
   ];
 

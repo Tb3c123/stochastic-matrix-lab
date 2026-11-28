@@ -100,11 +100,23 @@ export function useUnifiedTickets(
     [allTickets]
   );
 
+  const backtestJackpotCount = useMemo(
+    () =>
+      allTickets.filter(
+        (t) =>
+          t.status === "evaluated" &&
+          t.predicted_analysis?.ticket_origin !== "live_real_time" &&
+          Number(t.matched_results?.best_match_count || 0) === 6
+      ).length,
+    [allTickets]
+  );
+
   return {
     loading,
     summary,
     winningTickets,
     totalWinningRowsCount,
+    backtestJackpotCount,
     pendingTickets,
     liveEvaluatedGroups,
     evaluatedGroups,

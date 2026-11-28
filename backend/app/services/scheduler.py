@@ -77,21 +77,7 @@ async def auto_cycle_worker():
                             except Exception as e:
                                 logger.error(f"[19:10 Draw Sync] Error checking/evaluating {g_code}: {e}")
 
-            # ==============================================================
-            # TASK 2: 10:00 AM Morning AI Continuous Learning & Generation
-            # ==============================================================
-            if hour == 10 and _last_ai_cycle_day != today_str:
-                logger.info(f"[10:00 AM VN Time] Triggering automatic daily AI continuous learning & ticket generation for {today_str}...")
-                
-                async with AsyncSessionLocal() as session:
-                    for g_code in ["mega_6_45", "power_6_55"]:
-                        try:
-                            res = await execute_auto_cycle_pipeline(session, g_code)
-                            logger.info(f"[10:00 AM VN Time] Auto-cycle completed for {g_code}: success={res.get('success')}")
-                        except Exception as e:
-                            logger.error(f"[10:00 AM VN Time] Auto-cycle failed for {g_code}: {e}")
-
-                _last_ai_cycle_day = today_str
+            # Legacy 10:00 AM auto-cycle pipeline removed: 24/7 Evo Council manages live_real_time upcoming tickets.
 
         except asyncio.CancelledError:
             logger.info("Auto Cycle Background Worker shutting down.")
