@@ -29,8 +29,9 @@ export const UnifiedTicketsHub: React.FC<{ gameCode: string; latestDraw?: any; r
   }
 
   const horizonLabel = gameCode === "power_6_55" ? "12 Tháng" : "9 Tháng";
+  const liveWinDraws = liveEvaluatedGroups.filter(([, g]) => g.winningTicketsCount > 0).length;
   const modeTabs = [
-    { id: "live" as const, icon: Zap, label: `Thắng Thời Gian Thật (${liveEvaluatedGroups.length} kỳ)` },
+    { id: "live" as const, icon: Zap, label: `Thực Chiến (${liveWinDraws}/${liveEvaluatedGroups.length} kỳ trúng)` },
     { id: "pending" as const, icon: Clock, label: `Chờ Quay (${pendingTickets.length})` },
     { id: "winning" as const, icon: Trophy, label: `Hồi Tố 6/6 (${backtestJackpotCount})` },
     { id: "all" as const, icon: ListChecks, label: `Đủ ${evaluatedGroups.length} Kỳ (${horizonLabel})` },
